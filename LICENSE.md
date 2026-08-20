@@ -1,0 +1,44 @@
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
+
+Copyright (c) 2026 [Your Name]
+
+This license applies only to the original written work in this repository
+(script text, original dialogue, original characters, prose, and other
+creative contributions by the author). It does NOT grant any rights to
+"Doctor Who," its characters, settings, terminology, or any other elements
+owned by the British Broadcasting Corporation (BBC) — see the disclaimer
+below.
+
+You are free to:
+
+  Share — copy and redistribute the material in any medium or format
+  Adapt — remix, transform, and build upon the material
+
+Under the following terms:
+
+  Attribution — You must give appropriate credit, provide a link to the
+  license, and indicate if changes were made. You may do so in any
+  reasonable manner, but not in any way that suggests the licensor
+  endorses you or your use.
+
+  NonCommercial — You may not use the material for commercial purposes.
+
+  ShareAlike — If you remix, transform, or build upon the material, you
+  must distribute your contributions under the same license as the
+  original.
+
+No additional restrictions — You may not apply legal terms or
+technological measures that legally restrict others from doing anything
+the license permits.
+
+Full legal text: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+
+---
+
+DISCLAIMER
+
+Doctor Who, the TARDIS, the Doctor, and all related characters, names,
+settings, and concepts are the property of the British Broadcasting
+Corporation (BBC). This is an unofficial, non-commercial fan work created
+for entertainment purposes only. No copyright infringement is intended.
+No affiliation with or endorsement by the BBC is claimed or implied.
