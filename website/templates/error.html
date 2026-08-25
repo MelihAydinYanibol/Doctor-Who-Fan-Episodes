@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}{{ code }} · {{ t('error_title') }}{% endblock %}
+
+{% block content %}
+<section class="shell page">
+  <header class="page-head">
+    <p class="eyebrow">{{ code }}</p>
+    <h1>{{ t('error_title') }}</h1>
+    <p class="page-intro">
+      {% if code == 503 %}{{ t('no_content_body') }}{% else %}{{ t('error_body') }}{% endif %}
+    </p>
+  </header>
+  <p><a class="primary-button" href="{{ url_for('index', lang=lang) }}">{{ t('back_to_chapters') }}</a></p>
+</section>
+{% endblock %}

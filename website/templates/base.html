@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" dir="{{ dir }}" data-theme="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}{{ (primary_book.title if primary_book else t('site_name')) }}{% endblock %}</title>
+<meta name="description" content="{% block description %}{{ t('site_tagline') }} — {{ t('disclaimer_short') }}{% endblock %}">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/reader.css') }}">
+<link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+{% block head %}{% endblock %}
+<script>
+/* Applies saved reading preferences before first paint so the page never
+   flashes the default theme or text size. */
+(function () {
+  try {
+    var saved = JSON.parse(localStorage.getItem('dwfe:settings') || '{}');
+    var root = document.documentElement;
+    if (saved.theme) root.setAttribute('data-theme', saved.theme);
+    if (saved.font) root.setAttribute('data-font', saved.font);
+    if (saved.width) root.setAttribute('data-width', saved.width);
+    if (saved.align) root.setAttribute('data-align', saved.align);
+    if (saved.focus) root.setAttribute('data-focus', 'on');
+    if (saved.calm) root.setAttribute('data-calm', 'on');
+    var vars = {
+      fontSize: '--reader-font-size', lineHeight: '--reader-line-height',
+      letterSpacing: '--reader-letter-spacing', wordSpacing: '--reader-word-spacing',
+      paragraphSpacing: '--reader-paragraph-spacing'
+    };
+    Object.keys(vars).forEach(function (key) {
+      if (saved[key] !== undefined && saved[key] !== null) {
+        root.style.setProperty(vars[key], saved[key] + (key === 'lineHeight' ? '' : 'rem'));
+      }
+    });
+  } catch (err) { /* settings are a nicety; never block rendering */ }
+})();
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">{{ t('skip_to_content') }}</a>
+
+<header class="site-header">
+  <div class="progress-wrap" hidden>
+    <div id="reading-progress" class="progress-bar" role="progressbar"
+         aria-label="{{ t('reading_progress') }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+  </div>
+
+  <div class="shell header-inner">
+    <a class="brand" href="{{ url_for('index', lang=lang) }}">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="26" height="26" focusable="false"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2.2c1.4 0 2.7.4 3.8 1L12 11.1 8.2 5.2A7.7 7.7 0 0 1 12 4.2Zm-5.6 2.4 3.8 5.9-6.9.6a7.8 7.8 0 0 1 3.1-6.5Zm-3 8.7 6.9-.6-2.6 6.4a7.8 7.8 0 0 1-4.3-5.8Zm6.5 6.4 2.6-6.4 4.3 5.5a7.7 7.7 0 0 1-6.9.9Zm8.6-2.3-4.3-5.5 6.7-1.6a7.8 7.8 0 0 1-2.4 7.1Zm2.4-9.3-6.7 1.6 3.8-5.9a7.8 7.8 0 0 1 2.9 4.3Z"/></svg>
+      </span>
+      <span class="brand-text">
+        <strong>{{ primary_book.title if primary_book else t('site_name') }}</strong>
+        <small>{{ t('site_tagline') }}</small>
+      </span>
+    </a>
+
+    <nav class="site-nav" aria-label="{{ t('nav_primary') }}">
+      <a href="{{ url_for('index', lang=lang) }}" {% if current_endpoint == 'index' %}aria-current="page"{% endif %}>{{ t('nav_home') }}</a>
+      <a href="{{ url_for('legal', lang=lang) }}" {% if current_endpoint == 'legal' %}aria-current="page"{% endif %}>{{ t('nav_legal') }}</a>
+
+      {% if languages|length > 1 %}
+      <div class="lang-switch">
+        <label class="visually-hidden" for="language-select">{{ t('language_switch') }}</label>
+        <span class="lang-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="17" height="17" focusable="false"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.9a15.7 15.7 0 0 0-1.4-3.7A8 8 0 0 1 18.9 8ZM12 4.1c.7 1 1.3 2.4 1.7 3.9h-3.4C10.7 6.5 11.3 5.1 12 4.1ZM4.3 14a8 8 0 0 1 0-4h3.3a17.9 17.9 0 0 0 0 4Zm.8 2h2.9c.3 1.3.8 2.6 1.4 3.7A8 8 0 0 1 5.1 16Zm2.9-8H5.1a8 8 0 0 1 4.3-3.7A15.7 15.7 0 0 0 8 8Zm4 11.9c-.7-1-1.3-2.4-1.7-3.9h3.4c-.4 1.5-1 2.9-1.7 3.9ZM14.1 14H9.9a15.9 15.9 0 0 1 0-4h4.2a15.9 15.9 0 0 1 0 4Zm.5 5.7c.6-1.1 1.1-2.4 1.4-3.7h2.9a8 8 0 0 1-4.3 3.7ZM16.4 14a17.9 17.9 0 0 0 0-4h3.3a8 8 0 0 1 0 4Z"/></svg>
+        </span>
+        <select id="language-select" data-language-select>
+          {% for variant in language_variants %}
+            <option value="{{ variant.url }}" {% if variant.code == lang %}selected{% endif %}>{{ variant.name }}{% if not variant.exact and variant.code != lang %} ↗{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
+      <button type="button" class="settings-button" data-open-settings aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 6.2a2.2 2.2 0 1 1 0-4.4 2.2 2.2 0 0 1 0 4.4Zm8.5-2.2c0-.5 0-.9-.1-1.4l2-1.5-2-3.4-2.3 1a7.8 7.8 0 0 0-2.4-1.4L15.3 3h-4l-.4 2.3a7.8 7.8 0 0 0-2.4 1.4l-2.3-1-2 3.4 2 1.5a8.6 8.6 0 0 0 0 2.8l-2 1.5 2 3.4 2.3-1c.7.6 1.5 1.1 2.4 1.4l.4 2.3h4l.4-2.3c.9-.3 1.7-.8 2.4-1.4l2.3 1 2-3.4-2-1.5c.1-.5.1-.9.1-1.4Z"/></svg>
+        <span>{{ t('nav_settings') }}</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+  <div class="shell">
+    <p class="disclaimer">{{ t('disclaimer_short') }}</p>
+    <p class="meta">
+      <a href="{{ url_for('legal', lang=lang) }}">{{ t('nav_legal') }}</a>
+      <span aria-hidden="true">·</span>
+      <a href="{{ repo_url }}" rel="noopener noreferrer" target="_blank">GitHub</a>
+      {% if library.source %}
+        <span aria-hidden="true">·</span>
+        <span>{{ t('source_note', source=source_label) }}</span>
+      {% endif %}
+      {% if updated_iso %}
+        <span aria-hidden="true">·</span>
+        <time datetime="{{ updated_iso }}" data-localise-time>{{ t('updated', when=updated_human) }}</time>
+      {% endif %}
+    </p>
+    {% if library.error %}<p class="meta warn">{{ library.error }}</p>{% endif %}
+  </div>
+</footer>
+
+<dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+  <form method="dialog" class="settings-form">
+    <div class="settings-head">
+      <h2 id="settings-title">{{ t('settings_title') }}</h2>
+      <button class="icon-button" value="close" aria-label="{{ t('close') }}">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="m12 10.6 5-5 1.4 1.4-5 5 5 5-1.4 1.4-5-5-5 5-1.4-1.4 5-5-5-5L7 5.6Z"/></svg>
+      </button>
+    </div>
+    <p class="settings-hint">{{ t('settings_hint') }}</p>
+
+    <fieldset class="setting">
+      <legend>{{ t('theme') }}</legend>
+      <div class="chips" role="radiogroup" aria-label="{{ t('theme') }}">
+        {% for value, key in [('system','theme_system'),('light','theme_light'),('dark','theme_dark'),('sepia','theme_sepia'),('contrast','theme_contrast')] %}
+        <label class="chip">
+          <input type="radio" name="theme" value="{{ value }}" data-setting="theme">
+          <span>{{ t(key) }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <fieldset class="setting">
+      <legend>{{ t('font') }}</legend>
+      <div class="chips" role="radiogroup" aria-label="{{ t('font') }}">
+        {% for value, key in [('serif','font_serif'),('sans','font_sans'),('dyslexic','font_dyslexic'),('mono','font_mono')] %}
+        <label class="chip chip-{{ value }}">
+          <input type="radio" name="font" value="{{ value }}" data-setting="font">
+          <span>{{ t(key) }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="setting">
+      <label for="set-font-size">{{ t('font_size') }} <output id="out-font-size"></output></label>
+      <input type="range" id="set-font-size" data-setting="fontSize" min="0.9" max="2" step="0.05" value="1.15">
+    </div>
+
+    <div class="setting">
+      <label for="set-line-height">{{ t('line_height') }} <output id="out-line-height"></output></label>
+      <input type="range" id="set-line-height" data-setting="lineHeight" min="1.3" max="2.4" step="0.05" value="1.75">
+    </div>
+
+    <div class="setting">
+      <label for="set-letter-spacing">{{ t('letter_spacing') }} <output id="out-letter-spacing"></output></label>
+      <input type="range" id="set-letter-spacing" data-setting="letterSpacing" min="0" max="0.16" step="0.01" value="0">
+    </div>
+
+    <div class="setting">
+      <label for="set-word-spacing">{{ t('word_spacing') }} <output id="out-word-spacing"></output></label>
+      <input type="range" id="set-word-spacing" data-setting="wordSpacing" min="0" max="0.6" step="0.05" value="0">
+    </div>
+
+    <div class="setting">
+      <label for="set-paragraph-spacing">{{ t('paragraph_spacing') }} <output id="out-paragraph-spacing"></output></label>
+      <input type="range" id="set-paragraph-spacing" data-setting="paragraphSpacing" min="0.4" max="2.4" step="0.1" value="1.1">
+    </div>
+
+    <fieldset class="setting">
+      <legend>{{ t('text_width') }}</legend>
+      <div class="chips" role="radiogroup" aria-label="{{ t('text_width') }}">
+        {% for value, key in [('narrow','width_narrow'),('medium','width_medium'),('wide','width_wide')] %}
+        <label class="chip">
+          <input type="radio" name="width" value="{{ value }}" data-setting="width">
+          <span>{{ t(key) }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <fieldset class="setting">
+      <legend>{{ t('align') }}</legend>
+      <div class="chips" role="radiogroup" aria-label="{{ t('align') }}">
+        {% for value, key in [('start','align_left'),('justify','align_justify')] %}
+        <label class="chip">
+          <input type="radio" name="align" value="{{ value }}" data-setting="align">
+          <span>{{ t(key) }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="setting toggles">
+      <label class="switch">
+        <input type="checkbox" data-setting="focus">
+        <span>{{ t('focus_mode') }}</span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" data-setting="calm">
+        <span>{{ t('hide_images') }}</span>
+      </label>
+    </div>
+
+    <details class="setting shortcuts">
+      <summary>{{ t('shortcuts') }}</summary>
+      <dl>
+        <dt><kbd>←</kbd> / <kbd>→</kbd></dt><dd>{{ t('shortcut_prev') }} / {{ t('shortcut_next') }}</dd>
+        <dt><kbd>s</kbd></dt><dd>{{ t('shortcut_settings') }}</dd>
+        <dt><kbd>d</kbd></dt><dd>{{ t('shortcut_theme') }}</dd>
+        <dt><kbd>+</kbd> / <kbd>-</kbd></dt><dd>{{ t('shortcut_size') }}</dd>
+        <dt><kbd>l</kbd></dt><dd>{{ t('shortcut_listen') }}</dd>
+      </dl>
+    </details>
+
+    <div class="settings-actions">
+      <button type="button" class="ghost-button" data-reset-settings>{{ t('reset_settings') }}</button>
+      <button class="primary-button" value="close">{{ t('close') }}</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="live-region" class="visually-hidden" role="status" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='js/reader.js') }}" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

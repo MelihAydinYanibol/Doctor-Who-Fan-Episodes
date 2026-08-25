@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('chapter_number', number=chapter.number or position) }} — {{ chapter.title }} · {{ book.title }}{% endblock %}
+{% block description %}{{ chapter.title }} — {{ book.title }}. {{ t('disclaimer_short') }}{% endblock %}
+
+{% block content %}
+<article class="reader" data-chapter="{{ chapter.slug }}" data-book="{{ book.slug }}" lang="{{ chapter.language }}">
+  <div class="shell reader-shell">
+    <nav class="crumbs" aria-label="{{ t('back_to_chapters') }}">
+      <a href="{{ url_for('index', lang=lang) }}#{{ book.slug }}">← {{ t('back_to_chapters') }}</a>
+    </nav>
+
+    <header class="chapter-head">
+      <p class="eyebrow">{{ t('chapter_number', number=chapter.number or position) }} · {{ position }}/{{ total }}</p>
+      <h1>{{ chapter.title }}</h1>
+      <p class="chapter-meta">
+        <span>{{ t('reading_time', minutes=minutes) }}</span>
+        <span aria-hidden="true">·</span>
+        <span>{{ t('word_count', words='{:,}'.format(words)) }}</span>
+        <button type="button" class="ghost-button small" id="tts-button" data-listen
+                data-stop-label="{{ t('listen_stop') }}"
+                data-unsupported="{{ t('listen_unsupported') }}">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4Zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Zm-2.5-8.7v2a7 7 0 0 1 0 13.4v2a9 9 0 0 0 0-17.4Z"/></svg>
+          <span data-listen-label>{{ t('listen') }}</span>
+        </button>
+      </p>
+    </header>
+
+    <div class="prose" id="chapter-prose">
+      {% for block in blocks %}
+        {% if block.kind == 'break' %}
+          <hr class="scene-break" aria-hidden="true">
+        {% elif block.kind == 'scene' %}
+          <p class="scene" data-para>{{ block.html|safe }}</p>
+        {% else %}
+          <p data-para>{{ block.html|safe }}</p>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <p class="end-of-chapter">{{ t('end_of_chapter') }}</p>
+
+    <nav class="chapter-nav" aria-label="{{ t('chapter') }} — {{ t('previous_chapter') }} / {{ t('next_chapter') }}">
+      {% if previous %}
+        <a class="nav-card prev" href="{{ url_for('chapter', lang=lang, book_slug=book.slug, chapter_slug=previous.slug) }}" data-prev-chapter>
+          <span class="nav-label">← {{ t('previous_chapter') }}</span>
+          <span class="nav-title">{{ previous.title }}</span>
+        </a>
+      {% else %}<span></span>{% endif %}
+
+      {% if next %}
+        <a class="nav-card next" href="{{ url_for('chapter', lang=lang, book_slug=book.slug, chapter_slug=next.slug) }}" data-next-chapter>
+          <span class="nav-label">{{ t('next_chapter') }} →</span>
+          <span class="nav-title">{{ next.title }}</span>
+        </a>
+      {% else %}
+        <span class="nav-card done">{{ t('end_of_book') }}</span>
+      {% endif %}
+    </nav>
+  </div>
+</article>
+{% endblock %}

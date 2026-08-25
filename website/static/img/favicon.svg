@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="The Time Parallax">
+  <rect width="64" height="64" rx="12" fill="#0d3a5c"/>
+  <rect x="20" y="12" width="24" height="40" rx="2" fill="#12507d" stroke="#8fc4ea" stroke-width="2"/>
+  <rect x="24" y="18" width="16" height="12" rx="1" fill="#cfe6f7" opacity=".85"/>
+  <rect x="26" y="36" width="12" height="2" fill="#8fc4ea"/>
+  <rect x="28" y="6" width="8" height="5" rx="1.5" fill="#e8b64c"/>
+</svg>

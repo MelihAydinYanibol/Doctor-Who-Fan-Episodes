@@ -1,0 +1,417 @@
+/* ==========================================================================
+   The Time Parallax — reader behaviour
+   Vanilla JS, no dependencies. Everything degrades gracefully: with
+   JavaScript off the site is still a fully readable, navigable book.
+   ========================================================================== */
+
+(function () {
+  'use strict';
+
+  var SETTINGS_KEY = 'dwfe:settings';
+  var PROGRESS_KEY = 'dwfe:progress';
+  var root = document.documentElement;
+  var live = document.getElementById('live-region');
+
+  var DEFAULTS = {
+    theme: 'system',
+    font: 'serif',
+    width: 'medium',
+    align: 'start',
+    fontSize: 1.15,
+    lineHeight: 1.75,
+    letterSpacing: 0,
+    wordSpacing: 0,
+    paragraphSpacing: 1.1,
+    focus: false,
+    calm: false
+  };
+
+  var THEME_ORDER = ['system', 'light', 'dark', 'sepia', 'contrast'];
+
+  /* --- tiny storage helpers ---------------------------------------------- */
+
+  function readStore(key, fallback) {
+    try {
+      var raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (err) {
+      return fallback;
+    }
+  }
+
+  function writeStore(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (err) { /* private mode, quota — not worth interrupting reading */ }
+  }
+
+  function announce(message) {
+    if (!live || !message) return;
+    live.textContent = '';
+    window.setTimeout(function () { live.textContent = message; }, 40);
+  }
+
+  /* --- settings ----------------------------------------------------------- */
+
+  var settings = Object.assign({}, DEFAULTS, readStore(SETTINGS_KEY, {}));
+
+  function applySettings() {
+    root.setAttribute('data-theme', settings.theme);
+    root.setAttribute('data-font', settings.font);
+    root.setAttribute('data-width', settings.width);
+    root.setAttribute('data-align', settings.align);
+    root.setAttribute('data-focus', settings.focus ? 'on' : 'off');
+    root.setAttribute('data-calm', settings.calm ? 'on' : 'off');
+    root.style.setProperty('--reader-font-size', settings.fontSize + 'rem');
+    root.style.setProperty('--reader-line-height', String(settings.lineHeight));
+    root.style.setProperty('--reader-letter-spacing', settings.letterSpacing + 'rem');
+    root.style.setProperty('--reader-word-spacing', settings.wordSpacing + 'rem');
+    root.style.setProperty('--reader-paragraph-spacing', settings.paragraphSpacing + 'rem');
+    writeStore(SETTINGS_KEY, settings);
+    syncControls();
+  }
+
+  function formatValue(name, value) {
+    if (name === 'lineHeight') return Number(value).toFixed(2);
+    return Math.round(value * 16) + 'px';
+  }
+
+  function syncControls() {
+    document.querySelectorAll('[data-setting]').forEach(function (input) {
+      var name = input.getAttribute('data-setting');
+      var value = settings[name];
+      if (input.type === 'radio') {
+        input.checked = input.value === String(value);
+      } else if (input.type === 'checkbox') {
+        input.checked = Boolean(value);
+      } else {
+        input.value = value;
+        var output = document.getElementById('out-' + input.id.replace(/^set-/, ''));
+        if (output) output.textContent = formatValue(name, value);
+      }
+    });
+  }
+
+  function setSetting(name, value) {
+    settings[name] = value;
+    applySettings();
+  }
+
+  document.addEventListener('input', function (event) {
+    var input = event.target.closest ? event.target.closest('[data-setting]') : null;
+    if (!input) return;
+    var name = input.getAttribute('data-setting');
+    if (input.type === 'radio') {
+      if (input.checked) setSetting(name, input.value);
+    } else if (input.type === 'checkbox') {
+      setSetting(name, input.checked);
+    } else {
+      setSetting(name, parseFloat(input.value));
+    }
+  });
+
+  var resetButton = document.querySelector('[data-reset-settings]');
+  if (resetButton) {
+    resetButton.addEventListener('click', function () {
+      settings = Object.assign({}, DEFAULTS);
+      applySettings();
+      announce(resetButton.textContent.trim());
+    });
+  }
+
+  /* --- settings dialog ---------------------------------------------------- */
+
+  var dialog = document.getElementById('settings-dialog');
+  var openers = document.querySelectorAll('[data-open-settings]');
+
+  function toggleDialog() {
+    if (!dialog) return;
+    if (dialog.open) {
+      dialog.close();
+    } else if (typeof dialog.showModal === 'function') {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute('open', '');
+    }
+  }
+
+  openers.forEach(function (button) {
+    button.addEventListener('click', toggleDialog);
+  });
+
+  /* --- language switcher -------------------------------------------------- */
+
+  var languageSelect = document.querySelector('[data-language-select]');
+  if (languageSelect) {
+    languageSelect.addEventListener('change', function () {
+      if (this.value) window.location.href = this.value;
+    });
+  }
+
+  /* --- manual "check for new chapters" ------------------------------------ */
+
+  document.querySelectorAll('[data-refresh]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var label = button.textContent;
+      button.disabled = true;
+      fetch('/api/refresh', { method: 'POST' })
+        .then(function (response) { return response.json(); })
+        .then(function () { window.location.reload(); })
+        .catch(function () {
+          button.disabled = false;
+          button.textContent = label;
+        });
+    });
+  });
+
+  /* --- show the "last updated" stamp in the reader's own timezone ---------- */
+
+  document.querySelectorAll('[data-localise-time]').forEach(function (node) {
+    var stamp = node.getAttribute('datetime');
+    if (!stamp) return;
+    var when = new Date(stamp);
+    if (isNaN(when.getTime())) return;
+    var template = node.textContent.trim();
+    var formatted = when.toLocaleString(document.documentElement.lang || undefined, {
+      dateStyle: 'medium', timeStyle: 'short'
+    });
+    // Swap only the date portion, keeping the translated "Updated …" wording.
+    node.textContent = template.replace(/\d.*$/, formatted);
+  });
+
+  /* --- reading progress and resume ---------------------------------------- */
+
+  var article = document.querySelector('.reader');
+  var progressWrap = document.querySelector('.progress-wrap');
+  var progressBar = document.getElementById('reading-progress');
+  var progress = readStore(PROGRESS_KEY, {});
+
+  function progressKey(book, chapter, language) {
+    return [language, book, chapter].join('/');
+  }
+
+  if (article && progressBar) {
+    progressWrap.hidden = false;
+    var book = article.getAttribute('data-book');
+    var chapterSlug = article.getAttribute('data-chapter');
+    var language = document.documentElement.lang;
+    var key = progressKey(book, chapterSlug, language);
+    var heading = document.querySelector('.chapter-head h1');
+
+    var updateProgress = function () {
+      var scrollable = document.documentElement.scrollHeight - window.innerHeight;
+      var ratio = scrollable > 0 ? Math.min(1, Math.max(0, window.scrollY / scrollable)) : 1;
+      var percent = Math.round(ratio * 100);
+      progressBar.style.width = percent + '%';
+      progressBar.setAttribute('aria-valuenow', String(percent));
+      progress[key] = {
+        ratio: ratio,
+        title: heading ? heading.textContent.trim() : chapterSlug,
+        url: window.location.pathname,
+        at: Date.now()
+      };
+    };
+
+    var ticking = false;
+    window.addEventListener('scroll', function () {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () {
+        updateProgress();
+        ticking = false;
+      });
+    }, { passive: true });
+
+    window.addEventListener('beforeunload', function () { writeStore(PROGRESS_KEY, progress); });
+    window.addEventListener('pagehide', function () { writeStore(PROGRESS_KEY, progress); });
+    window.setInterval(function () { writeStore(PROGRESS_KEY, progress); }, 15000);
+
+    // Offer to pick up where the reader left off, without hijacking the scroll.
+    var saved = progress[key];
+    if (saved && saved.ratio > 0.04 && saved.ratio < 0.95 && !window.location.hash) {
+      var scrollable = document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({ top: saved.ratio * scrollable, behavior: 'auto' });
+    }
+    updateProgress();
+  }
+
+  // Index page: surface the most recent unfinished chapter.
+  var resumeLink = document.getElementById('resume-link');
+  if (resumeLink) {
+    var newest = null;
+    Object.keys(progress).forEach(function (key) {
+      var entry = progress[key];
+      if (!entry || !entry.url || entry.ratio >= 0.97) return;
+      if (key.indexOf(document.documentElement.lang + '/') !== 0) return;
+      if (!newest || entry.at > newest.at) newest = entry;
+    });
+    if (newest) {
+      resumeLink.href = newest.url;
+      resumeLink.hidden = false;
+      resumeLink.textContent = resumeLink.textContent.trim() + ' — ' + newest.title;
+    }
+  }
+
+  document.querySelectorAll('.chapter-card').forEach(function (card) {
+    var badge = card.querySelector('[data-resume-badge]');
+    if (!badge) return;
+    var url = card.getAttribute('href');
+    var match = null;
+    Object.keys(progress).forEach(function (key) {
+      var entry = progress[key];
+      if (entry && entry.url === url) match = entry;
+    });
+    if (match && match.ratio > 0.02) {
+      badge.hidden = false;
+      badge.textContent = Math.round(match.ratio * 100) + '%';
+    }
+  });
+
+  /* --- focus mode: track the paragraph in the reading zone ----------------- */
+
+  var paragraphs = Array.prototype.slice.call(document.querySelectorAll('.prose [data-para]'));
+
+  if (paragraphs.length && 'IntersectionObserver' in window) {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          paragraphs.forEach(function (p) { p.classList.remove('is-current'); });
+          entry.target.classList.add('is-current');
+        }
+      });
+    }, { rootMargin: '-40% 0px -45% 0px', threshold: 0 });
+    paragraphs.forEach(function (p) { observer.observe(p); });
+  }
+
+  /* --- read aloud (Web Speech API) ---------------------------------------- */
+
+  var listenButton = document.querySelector('[data-listen]');
+  if (listenButton) {
+    var labelEl = listenButton.querySelector('[data-listen-label]');
+    var labels = {
+      listen: labelEl ? labelEl.textContent.trim() : 'Listen',
+      stop: listenButton.getAttribute('data-label-stop') || '■'
+    };
+    var synth = window.speechSynthesis;
+    var index = 0;
+    var speaking = false;
+
+    function clearHighlight() {
+      paragraphs.forEach(function (p) { p.classList.remove('is-speaking'); });
+    }
+
+    function pickVoice() {
+      var wanted = (document.querySelector('.prose') || document.documentElement).closest('[lang]');
+      var code = (wanted ? wanted.lang : document.documentElement.lang || 'en').slice(0, 2);
+      var voices = synth.getVoices() || [];
+      return voices.filter(function (v) { return v.lang.toLowerCase().indexOf(code) === 0; })[0] || null;
+    }
+
+    function speakFrom(start) {
+      if (start >= paragraphs.length) { stop(); return; }
+      index = start;
+      var node = paragraphs[index];
+      var utterance = new window.SpeechSynthesisUtterance(node.textContent);
+      var voice = pickVoice();
+      if (voice) utterance.voice = voice;
+      utterance.lang = (node.closest('[lang]') || document.documentElement).lang || 'en';
+      utterance.rate = 1;
+      utterance.onstart = function () {
+        clearHighlight();
+        node.classList.add('is-speaking');
+        node.scrollIntoView({ block: 'center', behavior: settings.calm ? 'auto' : 'smooth' });
+      };
+      utterance.onend = function () {
+        if (speaking) speakFrom(index + 1);
+      };
+      utterance.onerror = function () { stop(); };
+      synth.speak(utterance);
+    }
+
+    function start() {
+      if (!synth || !paragraphs.length) return;
+      speaking = true;
+      listenButton.setAttribute('aria-pressed', 'true');
+      if (labelEl) labelEl.textContent = listenButton.getAttribute('data-stop-label') || '⏹';
+      var current = paragraphs.findIndex ? paragraphs.findIndex(function (p) {
+        return p.classList.contains('is-current');
+      }) : 0;
+      speakFrom(current > 0 ? current : 0);
+    }
+
+    function stop() {
+      speaking = false;
+      if (synth) synth.cancel();
+      clearHighlight();
+      listenButton.setAttribute('aria-pressed', 'false');
+      if (labelEl) labelEl.textContent = labels.listen;
+    }
+
+    listenButton.setAttribute('aria-pressed', 'false');
+    listenButton.addEventListener('click', function () {
+      if (!('speechSynthesis' in window)) {
+        announce(listenButton.getAttribute('data-unsupported') || 'Not supported');
+        listenButton.disabled = true;
+        return;
+      }
+      if (speaking) stop(); else start();
+    });
+    window.addEventListener('pagehide', stop);
+    window.dwfeToggleSpeech = function () { listenButton.click(); };
+  }
+
+  /* --- keyboard shortcuts -------------------------------------------------- */
+
+  function isTypingTarget(target) {
+    if (!target) return false;
+    var tag = (target.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'select' || tag === 'textarea' || target.isContentEditable;
+  }
+
+  document.addEventListener('keydown', function (event) {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (isTypingTarget(event.target)) return;
+
+    var prev = document.querySelector('[data-prev-chapter]');
+    var next = document.querySelector('[data-next-chapter]');
+    var rtl = document.documentElement.dir === 'rtl';
+
+    switch (event.key) {
+      case 'ArrowLeft':
+        if (rtl ? next : prev) { (rtl ? next : prev).click(); }
+        break;
+      case 'ArrowRight':
+        if (rtl ? prev : next) { (rtl ? prev : next).click(); }
+        break;
+      case 's':
+      case 'S':
+        event.preventDefault();
+        toggleDialog();
+        break;
+      case 'd':
+      case 'D':
+        var position = THEME_ORDER.indexOf(settings.theme);
+        setSetting('theme', THEME_ORDER[(position + 1) % THEME_ORDER.length]);
+        announce(settings.theme);
+        break;
+      case '+':
+      case '=':
+        setSetting('fontSize', Math.min(2, Math.round((settings.fontSize + 0.05) * 100) / 100));
+        announce(formatValue('fontSize', settings.fontSize));
+        break;
+      case '-':
+      case '_':
+        setSetting('fontSize', Math.max(0.9, Math.round((settings.fontSize - 0.05) * 100) / 100));
+        announce(formatValue('fontSize', settings.fontSize));
+        break;
+      case 'l':
+      case 'L':
+        if (window.dwfeToggleSpeech) window.dwfeToggleSpeech();
+        break;
+      default:
+        break;
+    }
+  });
+
+  applySettings();
+})();

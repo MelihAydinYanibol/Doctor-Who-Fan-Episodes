@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('legal_title') }} · {{ primary_book.title if primary_book else t('site_name') }}{% endblock %}
+
+{% block content %}
+<section class="shell page">
+  <header class="page-head">
+    <h1>{{ t('legal_title') }}</h1>
+    <p class="page-intro">{{ t('legal_intro') }}</p>
+  </header>
+
+  <div class="callout" role="note">
+    <p>{{ t('disclaimer_short') }}</p>
+  </div>
+
+  {% for document in documents %}
+  <section class="document prose" aria-labelledby="doc-{{ document.key }}">
+    <h2 id="doc-{{ document.key }}">{{ document.name }}</h2>
+    {{ document.html|safe }}
+    <p class="doc-source"><a href="{{ repo_url }}/blob/main/{{ document.path }}" rel="noopener noreferrer" target="_blank">{{ document.path }}</a></p>
+  </section>
+  {% else %}
+  <p class="notice">{{ t('no_content_body') }}</p>
+  {% endfor %}
+</section>
+{% endblock %}

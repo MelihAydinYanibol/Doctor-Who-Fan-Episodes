@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <div class="shell">
+    {% if primary_book %}
+      <p class="eyebrow">{{ t('site_tagline') }}</p>
+      <h1>{{ primary_book.title }}</h1>
+      {% set edition = primary_book.edition(lang) or primary_book.editions.values()|list|first %}
+      {% if edition %}
+        <p class="hero-meta">{{ t('chapter_count', count=edition.chapters|length) }}</p>
+        <div class="hero-actions">
+          {% if edition.chapters %}
+          <a class="primary-button" href="{{ url_for('chapter', lang=edition.language, book_slug=primary_book.slug, chapter_slug=edition.chapters[0].slug) }}">
+            {{ t('start_reading') }}
+          </a>
+          {% endif %}
+          <a class="ghost-button" id="resume-link" hidden href="#">{{ t('continue_reading') }}</a>
+        </div>
+      {% endif %}
+    {% else %}
+      <h1>{{ t('no_content_title') }}</h1>
+      <p class="hero-meta">{{ t('no_content_body') }}</p>
+    {% endif %}
+  </div>
+</section>
+
+{% for book in books %}
+  {% set edition = book.edition(lang) or book.editions.values()|list|first %}
+  {% if edition %}
+  <section class="shell chapters" id="{{ book.slug }}" aria-labelledby="heading-{{ book.slug }}">
+    <div class="section-head">
+      <h2 id="heading-{{ book.slug }}">{{ t('chapters') }}{% if books|length > 1 %} — {{ book.title }}{% endif %}</h2>
+      <button type="button" class="ghost-button small" data-refresh>{{ t('refresh') }}</button>
+    </div>
+
+    {% if edition.language != lang %}
+      <p class="notice">{{ t('not_translated_body', language=language_name(lang), available=edition.language|upper) }}</p>
+    {% endif %}
+
+    <ol class="chapter-list" lang="{{ edition.language }}">
+      {% for chapter in edition.chapters %}
+      <li>
+        <a class="chapter-card" href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=chapter.slug) }}"
+           data-chapter-slug="{{ chapter.slug }}">
+          <span class="chapter-index" aria-hidden="true">{{ '%02d'|format(chapter.number or loop.index) }}</span>
+          <span class="chapter-body">
+            <span class="chapter-eyebrow">{{ t('chapter_number', number=chapter.number or loop.index) }}</span>
+            <span class="chapter-title">{{ chapter.title }}</span>
+            <span class="chapter-resume" data-resume-badge hidden></span>
+          </span>
+          <span class="chapter-arrow" aria-hidden="true">→</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ol>
+    <p class="end-note">{{ t('end_of_book') }}</p>
+  </section>
+  {% endif %}
+{% endfor %}
+{% endblock %}
