@@ -1,0 +1,245 @@
+"""Tests for the reader.
+
+    python -m unittest discover -s website
+
+They build a throwaway repository on disk so the suite never depends on the
+network or on the real chapter files.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import tempfile
+import unittest
+
+from app import create_app
+from content import (
+    ContentService,
+    GitHubSource,
+    detect_language,
+    parse_chapter_name,
+    parse_prose,
+    signature_ok,
+    slugify,
+)
+from markdown_lite import render_document
+
+
+def build_fixture(root: str) -> None:
+    english = os.path.join(root, "My Book")
+    turkish = os.path.join(root, "My Book Turkish")
+    os.makedirs(english)
+    os.makedirs(turkish)
+
+    with open(os.path.join(english, "Chapter I - Alpha"), "w", encoding="utf-8") as handle:
+        handle.write(
+            "Chapter I – Alpha\n\nFirst paragraph. \n\nSomewhere else entirely. *\n\n*\n\nLast words.\n"
+        )
+    with open(os.path.join(english, "Chapter II - Beta"), "w", encoding="utf-8") as handle:
+        handle.write("Chapter 2 – Beta\n\nEnglish only.\n")
+    with open(os.path.join(turkish, "Bölüm I - Alfa"), "w", encoding="utf-8") as handle:
+        handle.write("Bölüm I – Alfa\n\nİlk paragraf.\n")
+
+    with open(os.path.join(root, "README.md"), "w", encoding="utf-8") as handle:
+        handle.write("## License\n\nA *fan work*. See [CC](https://example.com/cc).\n")
+    with open(os.path.join(root, "LICENSE"), "w", encoding="utf-8") as handle:
+        handle.write("CC BY-NC-SA 4.0\n\n  Share — copy it\n  Adapt — remix it\n")
+
+
+class ParsingTests(unittest.TestCase):
+    def test_chapter_names(self):
+        self.assertEqual(parse_chapter_name("Chapter I - Familiar Face"), (1, "Familiar Face"))
+        self.assertEqual(parse_chapter_name("Chapter III - Anomaly"), (3, "Anomaly"))
+        self.assertEqual(parse_chapter_name("Chapter 12 – Something"), (12, "Something"))
+        self.assertEqual(parse_chapter_name("Bölüm II - Hiç Yaşanmamış"), (2, "Hiç Yaşanmamış"))
+        self.assertEqual(parse_chapter_name("Chapter IV - Anomaly.txt"), (4, "Anomaly"))
+        self.assertEqual(parse_chapter_name("Prologue"), (None, "Prologue"))
+
+    def test_language_detection(self):
+        self.assertEqual(detect_language("Doctor Who : The Time Parallax"), ("en", "Doctor Who : The Time Parallax"))
+        self.assertEqual(detect_language("Doctor Who : The Time Parallax Turkish"), ("tr", "Doctor Who : The Time Parallax"))
+        self.assertEqual(detect_language("A Book German"), ("de", "A Book"))
+
+    def test_slugify_handles_turkish(self):
+        self.assertEqual(slugify("Hiç Yaşanmamış Bir Hayat"), "hic-yasanmamis-bir-hayat")
+
+    def test_prose_parsing(self):
+        raw = "Chapter I – Alpha\n\nOne. \n\nA place, later. *\n\n*\n\nTwo.\n"
+        blocks, words = parse_prose(raw, "Alpha", 1)
+        kinds = [block.kind for block in blocks]
+        self.assertEqual(kinds, ["p", "scene", "break", "p"])
+        self.assertEqual(blocks[1].html, "A place, later.")
+        self.assertEqual(words, 6)
+
+    def test_prose_escapes_html(self):
+        blocks, _ = parse_prose("T\n\nHe said <script>alert(1)</script> quietly.", "T", 1)
+        self.assertIn("&lt;script&gt;", blocks[0].html)
+        self.assertNotIn("<script>", blocks[0].html)
+
+    def test_markdown_and_plaintext(self):
+        html = render_document("## Hi\n\nA *fan work*. [CC](https://example.com)\n", "README.md")
+        self.assertIn("<h3>Hi</h3>", html)
+        self.assertIn("<em>fan work</em>", html)
+        self.assertIn('href="https://example.com"', html)
+        plain = render_document("Line one\nLine two\n", "LICENSE")
+        self.assertIn("Line one<br>Line two", plain)
+
+    def test_webhook_signature(self):
+        body = b'{"ref":"refs/heads/main"}'
+        import hashlib
+        import hmac
+
+        digest = hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
+        self.assertTrue(signature_ok("s3cret", body, "sha256=" + digest))
+        self.assertFalse(signature_ok("s3cret", body, "sha256=deadbeef"))
+        self.assertFalse(signature_ok("s3cret", body, None))
+
+
+class LibraryTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        build_fixture(self.root)
+        self.service = ContentService(local_root=self.root, mode="local", ttl=0)
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_editions_are_grouped_into_one_book(self):
+        library = self.service.library()
+        self.assertEqual([book.slug for book in library.books], ["my-book"])
+        book = library.books[0]
+        self.assertEqual(sorted(book.editions), ["en", "tr"])
+        self.assertEqual([c.slug for c in book.editions["en"].chapters], ["chapter-1", "chapter-2"])
+        self.assertEqual(book.editions["tr"].chapters[0].slug, "chapter-1")
+
+    def test_docs_are_discovered(self):
+        library = self.service.library()
+        self.assertEqual(sorted(library.docs), ["license", "readme"])
+
+    def test_new_chapter_appears_after_refresh(self):
+        self.assertEqual(len(self.service.library().books[0].editions["en"].chapters), 2)
+        path = os.path.join(self.root, "My Book", "Chapter III - Gamma")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("Chapter III – Gamma\n\nBrand new.\n")
+        library = self.service.refresh()
+        self.assertEqual(len(library.books[0].editions["en"].chapters), 3)
+
+    def test_last_good_snapshot_survives_a_broken_source(self):
+        self.service.library()
+        self.service.local.root = os.path.join(self.root, "gone")
+        library = self.service.library(force=True)
+        self.assertTrue(library.books)
+        self.assertIsNotNone(library.error)
+
+
+class GitHubSourceTests(unittest.TestCase):
+    def test_snapshot_and_read_use_the_expected_urls(self):
+        listings = {
+            "": [
+                {"name": "My Book", "path": "My Book", "type": "dir"},
+                {"name": "README.md", "path": "README.md", "type": "file", "sha": "a", "size": 3},
+                {"name": "website", "path": "website", "type": "dir"},
+            ],
+            "My Book": [
+                {
+                    "name": "Chapter I - Alpha",
+                    "path": "My Book/Chapter I - Alpha",
+                    "type": "file",
+                    "sha": "b",
+                    "size": 9,
+                }
+            ],
+        }
+        seen = []
+
+        def fake_request(self, url, accept):
+            seen.append(url)
+            if "raw.githubusercontent.com" in url:
+                return b"Chapter I - Alpha\n\nHello.\n"
+            path = "My Book" if "My%20Book" in url else ""
+            return json.dumps(listings[path]).encode("utf-8")
+
+        original = GitHubSource._request
+        GitHubSource._request = fake_request
+        try:
+            source = GitHubSource("Owner/Repo", "main")
+            folders, root_files = source.snapshot()
+            self.assertEqual(list(folders), ["My Book"])
+            self.assertEqual([f.name for f in root_files], ["README.md"])
+            body = source.read(folders["My Book"][0])
+            self.assertIn("Hello.", body)
+        finally:
+            GitHubSource._request = original
+
+        self.assertFalse(any("website" in url for url in seen), "the website folder must not be crawled")
+        self.assertTrue(any(url.startswith("https://raw.githubusercontent.com/Owner/Repo/main/") for url in seen))
+
+
+class RouteTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        build_fixture(self.root)
+        os.environ.update(DWFE_SOURCE="local", DWFE_CONTENT_ROOT=self.root, DWFE_CACHE_TTL="0")
+        self.client = create_app().test_client()
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+        for key in ("DWFE_SOURCE", "DWFE_CONTENT_ROOT", "DWFE_CACHE_TTL"):
+            os.environ.pop(key, None)
+
+    def test_root_redirects_to_a_language(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/en/", response.headers["Location"])
+
+    def test_index_and_chapter_render(self):
+        self.assertEqual(self.client.get("/en/").status_code, 200)
+        response = self.client.get("/en/read/my-book/chapter-1")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("First paragraph.", response.get_data(as_text=True))
+
+    def test_turkish_chapter_declares_its_language(self):
+        body = self.client.get("/tr/read/my-book/chapter-1").get_data(as_text=True)
+        self.assertIn('lang="tr"', body)
+        self.assertIn("İlk paragraf.", body)
+
+    def test_untranslated_chapter_offers_the_language_that_has_it(self):
+        response = self.client.get("/tr/read/my-book/chapter-2")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("/en/read/my-book/chapter-2", response.get_data(as_text=True))
+
+    def test_legal_page_shows_repository_documents(self):
+        body = self.client.get("/en/legal").get_data(as_text=True)
+        self.assertIn("README.md", body)
+        self.assertIn("LICENSE", body)
+        self.assertIn("CC BY-NC-SA 4.0", body)
+
+    def test_api_and_health(self):
+        payload = self.client.get("/api/library").get_json()
+        self.assertEqual(payload["languages"], ["en", "tr"])
+        self.assertTrue(self.client.get("/healthz").get_json()["ok"])
+
+    def test_webhook_requires_a_valid_signature_when_configured(self):
+        os.environ["DWFE_WEBHOOK_SECRET"] = "s3cret"
+        try:
+            client = create_app().test_client()
+            unsigned = client.post("/webhook/github", data=b"{}", headers={"X-GitHub-Event": "push"})
+            self.assertEqual(unsigned.status_code, 403)
+        finally:
+            os.environ.pop("DWFE_WEBHOOK_SECRET", None)
+
+    def test_refresh_token_is_enforced_when_configured(self):
+        os.environ["DWFE_REFRESH_TOKEN"] = "letmein"
+        try:
+            client = create_app().test_client()
+            self.assertEqual(client.post("/api/refresh").status_code, 403)
+            ok = client.post("/api/refresh", headers={"X-Refresh-Token": "letmein"})
+            self.assertEqual(ok.status_code, 200)
+        finally:
+            os.environ.pop("DWFE_REFRESH_TOKEN", None)
+
+
+if __name__ == "__main__":
+    unittest.main()

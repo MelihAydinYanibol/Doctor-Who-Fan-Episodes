@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('not_translated_title') }} · {{ book.title }}{% endblock %}
+
+{% block content %}
+<section class="shell page">
+  <header class="page-head">
+    <h1>{{ t('not_translated_title') }}</h1>
+    <p class="page-intro">
+      {{ t('not_translated_body',
+            language=language_name(lang),
+            available=available_languages|map('upper')|join(', ')) }}
+    </p>
+  </header>
+
+  <ul class="link-list">
+    {% for code in available_languages %}
+      <li>
+        <a class="primary-button" href="{{ url_for('chapter', lang=code, book_slug=book.slug, chapter_slug=missing_slug) }}">
+          {{ language_name(code) }}
+        </a>
+      </li>
+    {% endfor %}
+    <li><a class="ghost-button" href="{{ url_for('index', lang=lang) }}">{{ t('back_to_chapters') }}</a></li>
+  </ul>
+</section>
+{% endblock %}
