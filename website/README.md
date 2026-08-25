@@ -1,9 +1,9 @@
-# The Time Parallax — reader website
+# Fan Episodes — reader website
 
-A small Flask site that turns the chapter files in this repository into a
-readable, accessible online book. It reads the repository itself, so writing
-is still just "add a file, commit, push" — nothing about the site needs to be
-touched when a new chapter or a new translation lands.
+A small Flask site that turns the folders in this repository into a shelf of
+books you can read online. It reads the repository itself, so writing is still
+just "add a file, commit, push" — nothing about the site needs to be touched
+when a new chapter, a new translation, or a whole new book lands.
 
 ```
 website/
@@ -26,6 +26,31 @@ python app.py            # http://127.0.0.1:5000
 
 By default it reads the checkout it lives in, so it works offline.
 
+## How the site is laid out
+
+* `/<lang>/` — the library: one card per book, each with its banner, the
+  languages it exists in and how far you have read it.
+* `/<lang>/book/<book>` — that book's hero and chapter list.
+* `/<lang>/read/<book>/<chapter>` — the chapter itself.
+* `/<lang>/legal` — the notice and licence, rendered from the repository.
+
+## Book banners
+
+Put an image called `banner`, `cover`, `poster`, `art`, `hero` or `kapak` (any
+of `.jpg`, `.png`, `.webp`, `.avif`, `.gif`, `.svg`) in a book's folder and it
+becomes that book's banner on the shelf and the backdrop of its book page.
+Landscape art works best — the card crops to 16:9.
+
+A book with no image is not left blank: the site generates a banner from the
+title itself, on a colour derived from the book's name, so every book on the
+shelf looks deliberate from the first commit. If only one language edition has
+artwork, the other editions borrow it.
+
+Banners are served through `/cover/<book>/<lang>` from whichever source the
+library came from — so a GitHub-backed deployment picks up new artwork the same
+way it picks up new chapters — and carry an ETag so browsers re-download them
+only when the file actually changes.
+
 ## How chapters are found
 
 Nothing is hard-coded. At startup (and on every refresh) the reader scans the
@@ -44,8 +69,9 @@ top level of the repository:
   heading; blank lines separate paragraphs; a short line ending in `*` is
   rendered as a scene setter; a line of `*` or `---` becomes a scene break.
 
-So to publish a new chapter you commit a file named like the others. To start
-a new translation, copy the folder name and append the language
+So to publish a new chapter you commit a file named like the others, and a new
+book is simply a new folder — it appears on the shelf on the next refresh. To
+start a new translation, copy the folder name and append the language
 (`My Book German`) — add the language to `LANGUAGE_SUFFIXES` in `content.py`
 first if it isn't one of the two dozen already listed. Interface strings fall
 back to English for languages that have no entry in `i18n.py`, so a new
@@ -121,11 +147,13 @@ preferences.
   landmarks, live-region announcements and `lang` on every translated block
   make screen-reader and keyboard-only use practical.
 * **Progress** — a progress bar, per-chapter position saved locally, a
-  "Continue reading" button and a percentage badge on chapters already started.
+  "Continue reading" card on the shelf, a progress bar on each book card and a
+  percentage badge on chapters already started. Progress is tracked per
+  language, so a Turkish page never offers to resume an English chapter.
 * A print stylesheet renders the chapter as clean prose without the chrome.
 
 Verified with axe-core (WCAG 2.1 A/AA plus best practices): zero violations on
-the index, chapter, legal and error pages in the light, dark, sepia and
+the library, book, chapter, legal and error pages in the light, dark, sepia and
 high-contrast themes, in both languages. The one deliberate exception is focus
 mode, whose whole purpose is to dim the paragraphs you are not reading; it is
 off by default and the active paragraph always stays at full contrast.
@@ -149,9 +177,9 @@ reports whether chapters are loading, for uptime checks.
 cd website && python -m unittest discover
 ```
 
-20 tests covering file-name parsing, language detection, prose parsing, HTML
-escaping, the GitHub source (with stubbed HTTP), webhook signatures, refresh
-tokens, and every route.
+30 tests covering file-name parsing, language detection, banner discovery,
+prose parsing, HTML escaping, the GitHub source (with stubbed HTTP), webhook
+signatures, refresh tokens, and every route.
 
 ## Licence
 

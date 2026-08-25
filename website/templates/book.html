@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}{{ book.title }} · {{ t('site_name') }}{% endblock %}
+{% block description %}{{ book.title }} — {{ t('chapter_count', count=edition.chapters|length) }}. {{ t('disclaimer_short') }}{% endblock %}
+
+{% block content %}
+<section class="book-hero{% if cover_url %} has-cover{% endif %}" style="--cover-hue: {{ book.hue }};">
+  {% if cover_url %}<img class="book-hero-image" src="{{ cover_url }}" alt="" decoding="async">{% endif %}
+  <div class="shell book-hero-inner">
+    <nav class="crumbs" aria-label="{{ t('back_to_library') }}">
+      <a href="{{ url_for('index', lang=lang) }}">← {{ t('back_to_library') }}</a>
+    </nav>
+    <p class="eyebrow">{{ t('site_tagline') }}</p>
+    <h1 lang="{{ edition.language }}">{{ book.title }}</h1>
+    <p class="hero-meta">
+      {{ t('chapter_count', count=edition.chapters|length) }}
+      <span aria-hidden="true">·</span>
+      {% for code in book.languages %}<span class="lang-chip{% if code == lang %} is-current{% endif %}">{{ language_name(code) }}</span>{% endfor %}
+    </p>
+    <div class="hero-actions">
+      {% if edition.chapters %}
+      <a class="primary-button" href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=edition.chapters[0].slug) }}">
+        {{ t('start_reading') }}
+      </a>
+      {% endif %}
+      <a class="ghost-button" id="resume-link" hidden href="#">{{ t('continue_reading') }}</a>
+    </div>
+  </div>
+</section>
+
+<section class="shell chapters" aria-labelledby="chapters-heading">
+  <div class="section-head">
+    <h2 id="chapters-heading">{{ t('chapters') }}</h2>
+    <button type="button" class="ghost-button small" data-refresh>{{ t('refresh') }}</button>
+  </div>
+
+  {% if edition.language != lang %}
+    <p class="notice">{{ t('not_translated_body', language=language_name(lang), available=book.languages|map('upper')|join(', ')) }}</p>
+  {% endif %}
+
+  <ol class="chapter-list" lang="{{ edition.language }}">
+    {% for chapter in edition.chapters %}
+    <li>
+      <a class="chapter-card" href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=chapter.slug) }}"
+         data-chapter-slug="{{ chapter.slug }}">
+        <span class="chapter-index" aria-hidden="true">{{ '%02d'|format(chapter.number or loop.index) }}</span>
+        <span class="chapter-body">
+          <span class="chapter-eyebrow">{{ t('chapter_number', number=chapter.number or loop.index) }}</span>
+          <span class="chapter-title">{{ chapter.title }}</span>
+          <span class="chapter-resume" data-resume-badge hidden></span>
+        </span>
+        <span class="chapter-arrow" aria-hidden="true">→</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="end-note">{{ t('end_of_book') }}</p>
+</section>
+{% endblock %}

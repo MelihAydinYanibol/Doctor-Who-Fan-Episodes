@@ -1,61 +1,80 @@
 {% extends "base.html" %}
 
+{% block title %}{{ t('library_title') }} · {{ t('site_name') }}{% endblock %}
+{% block description %}{{ t('library_intro') }} {{ t('disclaimer_short') }}{% endblock %}
+
 {% block content %}
-<section class="hero">
+<section class="library-head">
   <div class="shell">
-    {% if primary_book %}
-      <p class="eyebrow">{{ t('site_tagline') }}</p>
-      <h1>{{ primary_book.title }}</h1>
-      {% set edition = primary_book.edition(lang) or primary_book.editions.values()|list|first %}
-      {% if edition %}
-        <p class="hero-meta">{{ t('chapter_count', count=edition.chapters|length) }}</p>
-        <div class="hero-actions">
-          {% if edition.chapters %}
-          <a class="primary-button" href="{{ url_for('chapter', lang=edition.language, book_slug=primary_book.slug, chapter_slug=edition.chapters[0].slug) }}">
-            {{ t('start_reading') }}
-          </a>
-          {% endif %}
-          <a class="ghost-button" id="resume-link" hidden href="#">{{ t('continue_reading') }}</a>
-        </div>
-      {% endif %}
-    {% else %}
-      <h1>{{ t('no_content_title') }}</h1>
-      <p class="hero-meta">{{ t('no_content_body') }}</p>
-    {% endif %}
+    <p class="eyebrow">{{ t('site_tagline') }}</p>
+    <h1>{{ t('library_title') }}</h1>
+    <p class="hero-meta">{{ t('library_intro') }}</p>
   </div>
 </section>
 
-{% for book in books %}
-  {% set edition = book.edition(lang) or book.editions.values()|list|first %}
-  {% if edition %}
-  <section class="shell chapters" id="{{ book.slug }}" aria-labelledby="heading-{{ book.slug }}">
-    <div class="section-head">
-      <h2 id="heading-{{ book.slug }}">{{ t('chapters') }}{% if books|length > 1 %} — {{ book.title }}{% endif %}</h2>
-      <button type="button" class="ghost-button small" data-refresh>{{ t('refresh') }}</button>
-    </div>
+<section class="shell" aria-labelledby="continue-heading" id="continue-row" hidden>
+  <div class="section-head">
+    <h2 id="continue-heading">{{ t('continue_reading') }}</h2>
+  </div>
+  <a class="continue-card" id="continue-card" href="#">
+    <span class="continue-body">
+      <span class="chapter-eyebrow" data-continue-book></span>
+      <span class="continue-title" data-continue-title></span>
+      <span class="progress-track" aria-hidden="true"><span class="progress-fill" data-continue-fill></span></span>
+    </span>
+    <span class="continue-percent" data-continue-percent></span>
+  </a>
+</section>
 
-    {% if edition.language != lang %}
-      <p class="notice">{{ t('not_translated_body', language=language_name(lang), available=edition.language|upper) }}</p>
-    {% endif %}
+<section class="shell shelf-section" aria-labelledby="shelf-heading">
+  <div class="section-head">
+    <h2 id="shelf-heading">{{ t('all_books') }}</h2>
+    <button type="button" class="ghost-button small" data-refresh>{{ t('refresh') }}</button>
+  </div>
 
-    <ol class="chapter-list" lang="{{ edition.language }}">
-      {% for chapter in edition.chapters %}
-      <li>
-        <a class="chapter-card" href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=chapter.slug) }}"
-           data-chapter-slug="{{ chapter.slug }}">
-          <span class="chapter-index" aria-hidden="true">{{ '%02d'|format(chapter.number or loop.index) }}</span>
-          <span class="chapter-body">
-            <span class="chapter-eyebrow">{{ t('chapter_number', number=chapter.number or loop.index) }}</span>
-            <span class="chapter-title">{{ chapter.title }}</span>
-            <span class="chapter-resume" data-resume-badge hidden></span>
+  {% if shelf %}
+  <ul class="shelf">
+    {% for item in shelf %}
+    <li class="shelf-item">
+      <a class="book-card" href="{{ url_for('book_page', lang=lang, book_slug=item.book.slug) }}"
+         data-book-slug="{{ item.book.slug }}" style="--cover-hue: {{ item.book.hue }};">
+        <span class="book-banner{% if not item.cover_url %} book-banner-generated{% endif %}">
+          {% if item.cover_url %}
+            <img src="{{ item.cover_url }}" alt="" loading="lazy" decoding="async">
+          {% else %}
+            {# No artwork in the folder: set the title itself as the banner. #}
+            <span class="banner-art" aria-hidden="true">
+              <span class="banner-sigil"></span>
+              <span class="banner-title" lang="{{ item.edition.language }}">{{ item.book.title }}</span>
+            </span>
+          {% endif %}
+          <span class="book-badge">{{ t('chapter_count', count=item.chapters) }}</span>
+        </span>
+
+        <span class="book-meta">
+          <span class="book-title">{{ item.book.title }}</span>
+          <span class="book-sub">
+            {% for code in item.languages %}<span class="lang-chip{% if code == lang %} is-current{% endif %}">{{ code|upper }}</span>{% endfor %}
+            {% if not item.translated %}<span class="book-note">{{ t('reading_in', language=language_name(item.edition.language)) }}</span>{% endif %}
           </span>
-          <span class="chapter-arrow" aria-hidden="true">→</span>
-        </a>
-      </li>
-      {% endfor %}
-    </ol>
-    <p class="end-note">{{ t('end_of_book') }}</p>
-  </section>
+          {% if item.first %}
+          <span class="book-first" lang="{{ item.edition.language }}">
+            {{ t('chapter_number', number=item.first.number or 1) }} · {{ item.first.title }}
+          </span>
+          {% endif %}
+          <span class="book-progress" data-book-progress hidden>
+            <span class="progress-track"><span class="progress-fill" data-book-fill></span></span>
+            <span class="book-progress-label" data-book-label></span>
+          </span>
+        </span>
+        <span class="book-cta">{{ t('open_book') }} <span aria-hidden="true">→</span></span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="notice">{{ t('no_content_body') }}</p>
   {% endif %}
-{% endfor %}
+  <p class="end-note">{{ t('shelf_note') }}</p>
+</section>
 {% endblock %}

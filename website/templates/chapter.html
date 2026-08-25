@@ -4,10 +4,10 @@
 {% block description %}{{ chapter.title }} — {{ book.title }}. {{ t('disclaimer_short') }}{% endblock %}
 
 {% block content %}
-<article class="reader" data-chapter="{{ chapter.slug }}" data-book="{{ book.slug }}" lang="{{ chapter.language }}">
+<article class="reader" data-chapter="{{ chapter.slug }}" data-book="{{ book.slug }}" data-book-title="{{ book.title }}" lang="{{ chapter.language }}">
   <div class="shell reader-shell">
     <nav class="crumbs" aria-label="{{ t('back_to_chapters') }}">
-      <a href="{{ url_for('index', lang=lang) }}#{{ book.slug }}">← {{ t('back_to_chapters') }}</a>
+      <a href="{{ url_for('book_page', lang=lang, book_slug=book.slug) }}">← {{ t('back_to_chapters') }}</a>
     </nav>
 
     <header class="chapter-head">

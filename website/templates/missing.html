@@ -21,7 +21,7 @@
         </a>
       </li>
     {% endfor %}
-    <li><a class="ghost-button" href="{{ url_for('index', lang=lang) }}">{{ t('back_to_chapters') }}</a></li>
+    <li><a class="ghost-button" href="{{ url_for('book_page', lang=lang, book_slug=book.slug) }}">{{ t('back_to_chapters') }}</a></li>
   </ul>
 </section>
 {% endblock %}

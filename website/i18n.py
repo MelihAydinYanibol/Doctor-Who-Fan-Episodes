@@ -39,15 +39,22 @@ RTL_LANGUAGES = {"ar", "he", "fa", "ur"}
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "en": {
-        "site_name": "The Time Parallax",
-        "site_tagline": "A Doctor Who fan serial",
+        "site_name": "Doctor Who : Fan Episodes",
+        "site_tagline": "Fan-written serials",
         "skip_to_content": "Skip to main content",
-        "nav_home": "Chapters",
+        "nav_home": "Library",
         "nav_primary": "Site navigation",
         "nav_legal": "Legal & licence",
         "nav_settings": "Reading settings",
         "language": "Language",
         "language_switch": "Change language",
+        "library_title": "The library",
+        "library_intro": "Every book we have published so far. New ones appear here on their own.",
+        "all_books": "All books",
+        "open_book": "Open",
+        "back_to_library": "Back to the library",
+        "reading_in": "Reading in {language}",
+        "shelf_note": "Drop a new folder in the repository and it shows up here.",
         "chapters": "Chapters",
         "chapter": "Chapter",
         "chapter_number": "Chapter {number}",
@@ -61,6 +68,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "reading_time": "{minutes} min read",
         "word_count": "{words} words",
         "chapter_count": "{count} chapters",
+        "chapter_count_one": "1 chapter",
         "end_of_chapter": "End of chapter",
         "end_of_book": "That's everything published so far. New chapters appear here automatically.",
         "not_translated_title": "Not available in this language yet",
@@ -125,15 +133,22 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "toc": "Contents",
     },
     "tr": {
-        "site_name": "Zaman Paralaksı",
-        "site_tagline": "Bir Doctor Who hayran serisi",
+        "site_name": "Doctor Who : Hayran Bölümleri",
+        "site_tagline": "Hayran yazımı seriler",
         "skip_to_content": "Ana içeriğe geç",
-        "nav_home": "Bölümler",
+        "nav_home": "Kitaplık",
         "nav_primary": "Site gezinmesi",
         "nav_legal": "Yasal bilgi ve lisans",
         "nav_settings": "Okuma ayarları",
         "language": "Dil",
         "language_switch": "Dili değiştir",
+        "library_title": "Kitaplık",
+        "library_intro": "Şimdiye kadar yayımladığımız bütün kitaplar. Yenileri buraya kendiliğinden eklenir.",
+        "all_books": "Tüm kitaplar",
+        "open_book": "Aç",
+        "back_to_library": "Kitaplığa dön",
+        "reading_in": "{language} dilinde okunuyor",
+        "shelf_note": "Depoya yeni bir klasör ekleyin, burada beliriversin.",
         "chapters": "Bölümler",
         "chapter": "Bölüm",
         "chapter_number": "{number}. Bölüm",
@@ -147,6 +162,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "reading_time": "{minutes} dk okuma",
         "word_count": "{words} kelime",
         "chapter_count": "{count} bölüm",
+        "chapter_count_one": "1 bölüm",
         "end_of_chapter": "Bölüm sonu",
         "end_of_book": "Şimdilik yayımlanan her şey bu kadar. Yeni bölümler buraya kendiliğinden eklenir.",
         "not_translated_title": "Bu dilde henüz yok",
@@ -219,6 +235,10 @@ def translator(language: str):
     fallback = TRANSLATIONS["en"]
 
     def t(key: str, **kwargs) -> str:
+        # "{count} chapters" reads badly at one; use the singular form when a
+        # language provides one.
+        if kwargs.get("count") == 1 and (strings.get(key + "_one") or fallback.get(key + "_one")):
+            key = key + "_one"
         template = strings.get(key) or fallback.get(key) or key
         if kwargs:
             try:
