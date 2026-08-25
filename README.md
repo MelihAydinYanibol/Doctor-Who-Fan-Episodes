@@ -1,3 +1,16 @@
+## Contributors
+
+*Doctor Who : The Time Parallax* is written by:
+
+| | |
+| --- | --- |
+| **AYDIN MELİH YANIBOL** ([@MelihAydinYanibol](https://github.com/MelihAydinYanibol)) | Lead writer |
+| **SkyGeneral13** ([@SkyGeneral13](https://github.com/SkyGeneral13)) | Lead writer |
+
+The Turkish edition in `Doctor Who : The Time Parallax Turkish` was
+translated from the English originals with
+[Claude Code](https://claude.ai/code).
+
 ## License & Disclaimer
 
 This is an unofficial *Doctor Who* fan work, created for non-commercial,
