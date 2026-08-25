@@ -689,3 +689,256 @@ kbd {
   .reader { padding: 0; }
   a { color: #000; text-decoration: none; }
 }
+
+/* --- library shelf -------------------------------------------------------- */
+
+.library-head { padding: clamp(2.2rem, 7vw, 4rem) 0 1.4rem; }
+.library-head h1 {
+  margin: 0;
+  font-family: var(--font-reader);
+  font-size: clamp(2rem, 5.5vw, 3.2rem);
+  line-height: 1.1;
+  letter-spacing: -.015em;
+}
+
+.shelf-section { padding-bottom: 4rem; }
+
+.shelf {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1.4rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+}
+
+.book-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: var(--shadow);
+  transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+.book-card:hover, .book-card:focus-visible {
+  border-color: var(--accent);
+  transform: translateY(-3px);
+}
+:root[data-calm="on"] .book-card:hover { transform: none; }
+
+.book-banner {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+.book-banner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Folders without artwork get the title itself rendered as the banner. */
+.book-banner-generated {
+  background:
+    radial-gradient(120% 90% at 15% 10%, hsl(var(--cover-hue, 205) 55% 34%), transparent 60%),
+    linear-gradient(140deg, hsl(var(--cover-hue, 205) 60% 22%), hsl(calc(var(--cover-hue, 205) + 40) 55% 12%));
+}
+.banner-art {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  padding: 1.3rem 1.4rem;
+  overflow: hidden;
+}
+.banner-sigil {
+  position: absolute;
+  inset-inline-end: -3.5rem;
+  top: 50%;
+  width: 13rem;
+  height: 13rem;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  border: 1px solid hsl(var(--cover-hue, 205) 80% 82% / .35);
+  box-shadow:
+    inset 0 0 0 1.6rem hsl(var(--cover-hue, 205) 80% 82% / .07),
+    inset 0 0 0 3.2rem hsl(var(--cover-hue, 205) 80% 82% / .07);
+}
+.banner-title {
+  position: relative;
+  font-family: var(--font-reader);
+  font-size: clamp(1.4rem, 2.6vw + .6rem, 2.1rem);
+  line-height: 1.08;
+  letter-spacing: -.01em;
+  color: #fff;
+  text-wrap: balance;
+  max-width: 12ch;
+  text-shadow: 0 1px 12px hsl(var(--cover-hue, 205) 70% 8% / .8);
+}
+
+.book-badge {
+  position: absolute;
+  inset-inline-start: .8rem;
+  inset-block-end: .8rem;
+  padding: .25rem .6rem;
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  background: rgba(8, 12, 20, .74);
+  color: #fff;
+  backdrop-filter: blur(4px);
+}
+:root[data-calm="on"] .book-badge { backdrop-filter: none; }
+
+.book-meta { display: grid; gap: .5rem; padding: 1rem 1.1rem .6rem; align-content: start; }
+.book-title { font-family: var(--font-reader); font-size: 1.22rem; line-height: 1.25; }
+.book-sub { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.book-note { font-size: .78rem; color: var(--ink-faint); }
+
+.lang-chip {
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: .16rem .45rem;
+  border-radius: 5px;
+  border: 1px solid var(--rule);
+  color: var(--ink-faint);
+}
+.lang-chip.is-current { border-color: var(--accent); color: var(--accent); }
+
+.book-cta {
+  padding: .7rem 1.1rem 1rem;
+  font-size: .84rem;
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  gap: .3rem;
+}
+
+.progress-track {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--rule);
+  overflow: hidden;
+}
+.progress-fill { display: block; height: 100%; width: 0; background: var(--accent); }
+.book-progress { display: grid; gap: .3rem; }
+.book-progress-label { font-size: .74rem; color: var(--ink-faint); font-weight: 600; }
+
+/* --- continue-reading card ------------------------------------------------ */
+
+.continue-card {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  text-decoration: none;
+  color: inherit;
+  margin-bottom: 2.4rem;
+}
+.continue-card:hover { border-color: var(--accent); }
+.continue-body { display: grid; gap: .3rem; flex: 1; min-width: 0; }
+.continue-title { font-family: var(--font-reader); font-size: 1.15rem; }
+.continue-percent { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); }
+
+/* --- book page hero ------------------------------------------------------- */
+
+.book-hero {
+  position: relative;
+  padding: clamp(1.6rem, 5vw, 3rem) 0 clamp(1.6rem, 4vw, 2.6rem);
+  overflow: hidden;
+  /* Books without artwork still get their own colour, from the same hue the
+     generated banner uses. */
+  background:
+    radial-gradient(60rem 22rem at 12% -20%, hsl(var(--cover-hue, 205) 60% 50% / .18), transparent 65%),
+    radial-gradient(40rem 18rem at 88% -12%, hsl(calc(var(--cover-hue, 205) + 45) 60% 50% / .13), transparent 70%);
+}
+:root[data-calm="on"] .book-hero:not(.has-cover),
+:root[data-theme="contrast"] .book-hero:not(.has-cover) { background: none; }
+.book-hero.has-cover { background: hsl(var(--cover-hue, 205) 45% 12%); }
+.book-hero-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .32;
+  filter: saturate(.9);
+}
+.book-hero.has-cover .book-hero-inner { position: relative; color: #f4f6fb; }
+.book-hero.has-cover .eyebrow,
+.book-hero.has-cover .hero-meta { color: #d3dae8; }
+.book-hero.has-cover .crumbs a { color: #d3dae8; }
+.book-hero.has-cover .lang-chip { border-color: rgba(255, 255, 255, .35); color: #e7ecf5; }
+.book-hero.has-cover .lang-chip.is-current { border-color: #fff; color: #fff; }
+.book-hero.has-cover .ghost-button { color: #fff; border-color: rgba(255, 255, 255, .5); }
+
+.book-hero-inner h1 {
+  margin: .1rem 0 .6rem;
+  font-family: var(--font-reader);
+  font-size: clamp(2rem, 5.5vw, 3.4rem);
+  line-height: 1.08;
+  letter-spacing: -.015em;
+  max-width: 20ch;
+}
+.book-hero .crumbs { margin-bottom: 1rem; }
+.book-hero .hero-meta { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+  .shelf { gap: 1rem; }
+  .continue-card { padding: .9rem 1rem; }
+}
+
+/* A photographic hero needs a light call to action to stay readable. */
+.book-hero.has-cover .primary-button {
+  background: #ffffff;
+  color: #10131a;
+  border-color: #ffffff;
+}
+.book-hero.has-cover .primary-button:hover { background: #e9eef6; }
+
+/* Keep the generated title clear of the chapter-count badge. */
+.book-banner-generated .banner-art { padding-block-end: 2.9rem; }
+
+/* A shelf holding a single book would look sparse in a grid cell, so the lone
+   card becomes a wide featured one. It reverts to the normal card as soon as a
+   second book exists. */
+.shelf-item:only-child { grid-column: 1 / -1; }
+.shelf-item:only-child .book-card {
+  grid-template-columns: minmax(15rem, 24rem) 1fr;
+  grid-template-rows: 1fr auto;
+}
+.shelf-item:only-child .book-banner {
+  grid-row: 1 / span 2;
+  aspect-ratio: auto;
+  min-height: 15rem;
+  height: 100%;
+}
+.shelf-item:only-child .book-meta { padding: 1.7rem 1.7rem .6rem; align-content: end; gap: .7rem; }
+.shelf-item:only-child .book-title { font-size: 1.7rem; }
+.shelf-item:only-child .book-cta { padding: 0 1.7rem 1.7rem; }
+
+@media (max-width: 720px) {
+  .shelf-item:only-child .book-card { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+  .shelf-item:only-child .book-banner { grid-row: auto; aspect-ratio: 16 / 9; min-height: 0; }
+  .shelf-item:only-child .book-meta { padding: 1rem 1.1rem .6rem; }
+  .shelf-item:only-child .book-title { font-size: 1.22rem; }
+  .shelf-item:only-child .book-cta { padding: .7rem 1.1rem 1rem; }
+}
+
+.book-first { font-size: .84rem; color: var(--ink-faint); line-height: 1.4; }
+.shelf-item:only-child .book-meta { align-content: center; }

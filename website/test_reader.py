@@ -17,6 +17,7 @@ import unittest
 from app import create_app
 from content import (
     ContentService,
+    find_cover,
     GitHubSource,
     detect_language,
     parse_chapter_name,
@@ -41,6 +42,14 @@ def build_fixture(root: str) -> None:
         handle.write("Chapter 2 – Beta\n\nEnglish only.\n")
     with open(os.path.join(turkish, "Bölüm I - Alfa"), "w", encoding="utf-8") as handle:
         handle.write("Bölüm I – Alfa\n\nİlk paragraf.\n")
+
+    # A 1x1 GIF is enough to prove the banner pipeline end to end.
+    with open(os.path.join(english, "banner.gif"), "wb") as handle:
+        handle.write(
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!"
+            b"\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01"
+            b"\x00\x00\x02\x02D\x01\x00;"
+        )
 
     with open(os.path.join(root, "README.md"), "w", encoding="utf-8") as handle:
         handle.write("## License\n\nA *fan work*. See [CC](https://example.com/cc).\n")
@@ -86,6 +95,18 @@ class ParsingTests(unittest.TestCase):
         plain = render_document("Line one\nLine two\n", "LICENSE")
         self.assertIn("Line one<br>Line two", plain)
 
+    def test_find_cover_prefers_banner_and_ignores_prose(self):
+        from content import FileEntry
+
+        def entry(name):
+            return FileEntry(name=name, path=name, sha="x")
+
+        files = [entry("Chapter I - Alpha"), entry("cover.png"), entry("banner.jpg")]
+        self.assertEqual(find_cover(files).name, "banner.jpg")
+        self.assertEqual(find_cover([entry("Kapak.webp")]).name, "Kapak.webp")
+        self.assertEqual(find_cover([entry("banner-wide.png")]).name, "banner-wide.png")
+        self.assertIsNone(find_cover([entry("Chapter I - Alpha"), entry("notes.png")]))
+
     def test_webhook_signature(self):
         body = b'{"ref":"refs/heads/main"}'
         import hashlib
@@ -113,6 +134,24 @@ class LibraryTests(unittest.TestCase):
         self.assertEqual(sorted(book.editions), ["en", "tr"])
         self.assertEqual([c.slug for c in book.editions["en"].chapters], ["chapter-1", "chapter-2"])
         self.assertEqual(book.editions["tr"].chapters[0].slug, "chapter-1")
+
+    def test_cover_is_found_and_shared_across_editions(self):
+        book = self.service.library().books[0]
+        self.assertEqual(book.editions["en"].cover.name, "banner.gif")
+        self.assertIsNone(book.editions["tr"].cover)
+        # The Turkish edition has no artwork of its own, so it borrows the one
+        # that exists rather than falling back to the generated banner.
+        self.assertEqual(book.cover_for("tr"), ("en", book.editions["en"].cover))
+        self.assertEqual(book.cover_for("en")[0], "en")
+
+    def test_cover_is_not_mistaken_for_a_chapter(self):
+        slugs = [c.slug for c in self.service.library().books[0].editions["en"].chapters]
+        self.assertEqual(slugs, ["chapter-1", "chapter-2"])
+
+    def test_hue_is_stable_for_a_title(self):
+        book = self.service.library().books[0]
+        self.assertEqual(book.hue, self.service.refresh().books[0].hue)
+        self.assertTrue(0 <= book.hue < 360)
 
     def test_docs_are_discovered(self):
         library = self.service.library()
@@ -194,11 +233,46 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/en/", response.headers["Location"])
 
-    def test_index_and_chapter_render(self):
-        self.assertEqual(self.client.get("/en/").status_code, 200)
+    def test_library_index_lists_books_not_chapters(self):
+        body = self.client.get("/en/").get_data(as_text=True)
+        self.assertIn('href="/en/book/my-book"', body)
+        self.assertIn("My Book", body)
+        self.assertNotIn("chapter-1", body)
+
+    def test_book_page_lists_chapters(self):
+        body = self.client.get("/en/book/my-book").get_data(as_text=True)
+        self.assertIn("/en/read/my-book/chapter-1", body)
+        self.assertIn("Alpha", body)
+
+    def test_unknown_book_is_a_404(self):
+        self.assertEqual(self.client.get("/en/book/no-such-book").status_code, 404)
+
+    def test_chapter_renders(self):
         response = self.client.get("/en/read/my-book/chapter-1")
         self.assertEqual(response.status_code, 200)
         self.assertIn("First paragraph.", response.get_data(as_text=True))
+
+    def test_cover_is_served_with_an_etag(self):
+        response = self.client.get("/cover/my-book/en")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "image/gif")
+        self.assertTrue(response.get_data().startswith(b"GIF89a"))
+        cached = self.client.get("/cover/my-book/en", headers={"If-None-Match": response.headers["ETag"]})
+        self.assertEqual(cached.status_code, 304)
+
+    def test_missing_cover_is_a_404(self):
+        self.assertEqual(self.client.get("/cover/my-book/tr").status_code, 404)
+        self.assertEqual(self.client.get("/cover/nope/en").status_code, 404)
+
+    def test_generated_banner_is_used_when_a_book_has_no_artwork(self):
+        body = self.client.get("/tr/").get_data(as_text=True)
+        # Turkish borrows the English artwork, so the fallback needs its own book.
+        os.makedirs(os.path.join(self.root, "Second Book"))
+        with open(os.path.join(self.root, "Second Book", "Chapter I - Solo"), "w", encoding="utf-8") as handle:
+            handle.write("Chapter I - Solo\n\nAlone.\n")
+        body = self.client.get("/en/").get_data(as_text=True)
+        self.assertIn("book-banner-generated", body)
+        self.assertIn("banner-title", body)
 
     def test_turkish_chapter_declares_its_language(self):
         body = self.client.get("/tr/read/my-book/chapter-1").get_data(as_text=True)

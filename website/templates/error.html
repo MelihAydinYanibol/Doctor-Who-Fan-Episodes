@@ -11,6 +11,6 @@
       {% if code == 503 %}{{ t('no_content_body') }}{% else %}{{ t('error_body') }}{% endif %}
     </p>
   </header>
-  <p><a class="primary-button" href="{{ url_for('index', lang=lang) }}">{{ t('back_to_chapters') }}</a></p>
+  <p><a class="primary-button" href="{{ url_for('index', lang=lang) }}">{{ t('back_to_library') }}</a></p>
 </section>
 {% endblock %}

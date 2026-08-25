@@ -104,10 +104,28 @@ CHAPTER_WORDS = (
 
 TEXT_EXTENSIONS = {"", ".txt", ".md", ".markdown", ".text"}
 
+# A book folder may carry its own artwork. The first file whose name (without
+# extension) matches one of these is used as the shelf banner; books without
+# one get a generated typographic banner instead.
+COVER_NAMES = ("banner", "cover", "poster", "art", "hero", "artwork", "kapak", "afis", "afiş")
+IMAGE_EXTENSIONS = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".avif": "image/avif",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+}
+
 ROMAN_VALUES = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100, "d": 500, "m": 1000}
 
 # Words per minute used for the reading-time estimate.
 WORDS_PER_MINUTE = 220
+
+# Banners larger than this are streamed every time instead of being held in
+# memory, so one enormous artwork file cannot bloat the process.
+MAX_CACHED_IMAGE_BYTES = 4 * 1024 * 1024
 
 
 # --------------------------------------------------------------------------
@@ -188,6 +206,28 @@ def parse_chapter_name(file_name: str) -> tuple[int | None, str]:
         return int(leading.group(1)), leading.group(2).strip()
 
     return None, stem
+
+
+def find_cover(entries: Iterable[FileEntry]) -> FileEntry | None:
+    """Pick the banner image out of a book folder, if it has one."""
+    candidates = []
+    for entry in entries:
+        stem, extension = _split_extension(entry.name)
+        if extension not in IMAGE_EXTENSIONS:
+            continue
+        key = _strip_accents(stem).lower().strip(" -_")
+        for rank, name in enumerate(COVER_NAMES):
+            if key == _strip_accents(name).lower() or key.startswith(_strip_accents(name).lower()):
+                candidates.append((rank, entry.name, entry))
+                break
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[0][2]
+
+
+def content_type_for(name: str) -> str:
+    return IMAGE_EXTENSIONS.get(_split_extension(name)[1], "application/octet-stream")
 
 
 def _normalise_for_compare(value: str) -> str:
@@ -346,9 +386,15 @@ class LocalSource:
         return folders, root_files
 
     def read(self, entry: FileEntry) -> str:
+        return self.read_bytes(entry).decode("utf-8", errors="replace")
+
+    def read_bytes(self, entry: FileEntry) -> bytes:
         full = os.path.join(self.root, *entry.path.split("/"))
-        with open(full, "r", encoding="utf-8", errors="replace") as handle:
-            return handle.read()
+        try:
+            with open(full, "rb") as handle:
+                return handle.read()
+        except OSError as exc:
+            raise ContentSourceError(f"could not read {entry.path}: {exc}") from exc
 
 
 class GitHubSource:
@@ -418,9 +464,12 @@ class GitHubSource:
         return folders, root_files
 
     def read(self, entry: FileEntry) -> str:
+        return self.read_bytes(entry).decode("utf-8", errors="replace")
+
+    def read_bytes(self, entry: FileEntry) -> bytes:
         quoted = urllib.parse.quote(entry.path, safe="/")
         url = f"https://raw.githubusercontent.com/{self.repo}/{urllib.parse.quote(self.branch)}/{quoted}"
-        return self._request(url, "text/plain").decode("utf-8", errors="replace")
+        return self._request(url, "*/*")
 
 
 # --------------------------------------------------------------------------
@@ -448,6 +497,7 @@ class Edition:
     language: str
     folder: str
     chapters: list[Chapter] = field(default_factory=list)
+    cover: FileEntry | None = None
 
     def by_slug(self, slug: str) -> Chapter | None:
         for chapter in self.chapters:
@@ -468,6 +518,23 @@ class Book:
 
     def edition(self, language: str) -> Edition | None:
         return self.editions.get(language)
+
+    def cover_for(self, language: str) -> tuple[str, FileEntry] | None:
+        """The banner to show for a language, falling back to another edition's."""
+        edition = self.editions.get(language)
+        if edition and edition.cover:
+            return language, edition.cover
+        for code in self.languages:
+            other = self.editions[code]
+            if other.cover:
+                return code, other.cover
+        return None
+
+    @property
+    def hue(self) -> int:
+        """A stable colour for the generated banner, derived from the title."""
+        digest = hashlib.sha1(self.slug.encode("utf-8")).hexdigest()
+        return int(digest[:4], 16) % 360
 
 
 @dataclass
@@ -517,6 +584,7 @@ class ContentService:
         self._lock = threading.RLock()
         self._library: Library | None = None
         self._body_cache: dict[str, tuple[list[Block], int]] = {}
+        self._binary_cache: dict[str, bytes] = {}
         self._source = None
 
     # -- source selection ---------------------------------------------------
@@ -574,6 +642,29 @@ class ContentService:
     def read_doc(self, entry: FileEntry) -> str:
         return self._read(entry)
 
+    def read_binary(self, entry: FileEntry) -> bytes:
+        """Fetch a binary file (a book banner), memoised by its git blob SHA."""
+        cache_key = f"{entry.path}@{entry.sha}"
+        with self._lock:
+            cached = self._binary_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        errors = []
+        for source in self._sources():
+            try:
+                data = source.read_bytes(entry)
+            except ContentSourceError as exc:
+                errors.append(str(exc))
+                continue
+            if len(data) <= MAX_CACHED_IMAGE_BYTES:
+                with self._lock:
+                    if len(self._binary_cache) > 32:
+                        self._binary_cache.clear()
+                    self._binary_cache[cache_key] = data
+            return data
+        raise ContentSourceError("; ".join(errors) or "no content source available")
+
     def reading_minutes(self, words: int) -> int:
         return max(1, round(words / WORDS_PER_MINUTE))
 
@@ -622,7 +713,7 @@ class ContentService:
 
             parsed.sort(key=lambda item: (item[0] is None, item[0] or 0, item[2].name))
 
-            edition = Edition(language=language, folder=folder_name)
+            edition = Edition(language=language, folder=folder_name, cover=find_cover(entries))
             for index, (number, title, entry) in enumerate(parsed, start=1):
                 effective = number if number is not None else index
                 # Slugs are numeric so the same chapter has the same URL in

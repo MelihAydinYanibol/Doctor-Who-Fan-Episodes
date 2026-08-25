@@ -34,7 +34,13 @@ from flask import (
     url_for,
 )
 
-from content import DEFAULT_LANGUAGE, ContentService, ContentSourceError, signature_ok
+from content import (
+    DEFAULT_LANGUAGE,
+    ContentService,
+    ContentSourceError,
+    content_type_for,
+    signature_ok,
+)
 from i18n import LANGUAGE_NAMES, language_name, text_direction, translator
 from markdown_lite import render_document
 
@@ -131,7 +137,7 @@ def create_app() -> Flask:
         for code in library.languages:
             target = url_for("index", lang=code)
             # "exact" means the switch lands on the same thing you are reading.
-            # On a non-chapter page the index *is* the same thing.
+            # On a non-book page the library index *is* the same thing.
             exact = book_slug is None
             if book_slug:
                 book = library.book(book_slug)
@@ -143,7 +149,7 @@ def create_app() -> Flask:
                         )
                         exact = True
                     else:
-                        target = url_for("index", lang=code, _anchor=book_slug)
+                        target = url_for("book_page", lang=code, book_slug=book_slug)
                         exact = not chapter_slug
             variants.append(
                 {
@@ -193,15 +199,80 @@ def create_app() -> Flask:
             make_response(redirect(url_for("index", lang=language))), language
         )
 
+    def shelf_entry(book, language: str) -> dict | None:
+        """Everything the library grid needs for one book."""
+        edition = book.edition(language) or (
+            book.editions[book.languages[0]] if book.languages else None
+        )
+        if edition is None:
+            return None
+        cover = book.cover_for(language)
+        return {
+            "book": book,
+            "edition": edition,
+            "chapters": len(edition.chapters),
+            "first": edition.chapters[0] if edition.chapters else None,
+            "cover_url": url_for("cover", book_slug=book.slug, lang=cover[0]) if cover else None,
+            "translated": edition.language == language,
+            "languages": book.languages,
+        }
+
     @app.route("/<lang>/")
     def index(lang: str):
         library = service.library()
         if library.languages and lang not in library.languages:
             return redirect(url_for("index", lang=pick_language()))
         context = base_context(lang)
+        context["shelf"] = [
+            entry for entry in (shelf_entry(book, lang) for book in library.books) if entry
+        ]
         context["language_variants"] = language_variants(None, None)
         response = make_response(render_template("index.html", **context))
         return with_language_cookie(response, lang)
+
+    @app.route("/<lang>/book/<book_slug>")
+    def book_page(lang: str, book_slug: str):
+        library = service.library()
+        book = library.book(book_slug)
+        if book is None:
+            abort(404)
+        edition = book.edition(lang) or (
+            book.editions[book.languages[0]] if book.languages else None
+        )
+        if edition is None:
+            abort(404)
+        cover = book.cover_for(lang)
+        context = base_context(lang)
+        context.update(
+            book=book,
+            edition=edition,
+            cover_url=url_for("cover", book_slug=book.slug, lang=cover[0]) if cover else None,
+            language_variants=language_variants(book_slug, None),
+        )
+        response = make_response(render_template("book.html", **context))
+        return with_language_cookie(response, lang)
+
+    @app.route("/cover/<book_slug>/<lang>")
+    def cover(book_slug: str, lang: str):
+        """Serve a book's banner from whichever source the library came from."""
+        library = service.library()
+        book = library.book(book_slug)
+        edition = book.edition(lang) if book else None
+        entry = edition.cover if edition else None
+        if entry is None:
+            abort(404)
+
+        etag = f'"{entry.sha}"'
+        if request.headers.get("If-None-Match") == etag:
+            return Response(status=304, headers={"ETag": etag})
+        try:
+            data = service.read_binary(entry)
+        except ContentSourceError:
+            abort(404)
+        response = Response(data, mimetype=content_type_for(entry.name))
+        response.headers["ETag"] = etag
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        return response
 
     @app.route("/<lang>/read/<book_slug>/<chapter_slug>")
     def chapter(lang: str, book_slug: str, chapter_slug: str):
@@ -288,6 +359,11 @@ def create_app() -> Flask:
                     {
                         "slug": book.slug,
                         "title": book.title,
+                        "cover": (
+                            url_for("cover", book_slug=book.slug, lang=book.cover_for(book.languages[0])[0])
+                            if book.languages and book.cover_for(book.languages[0])
+                            else None
+                        ),
                         "editions": {
                             code: [
                                 {

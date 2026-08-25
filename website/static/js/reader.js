@@ -207,6 +207,7 @@
       progress[key] = {
         ratio: ratio,
         title: heading ? heading.textContent.trim() : chapterSlug,
+        book: article.getAttribute('data-book-title') || '',
         url: window.location.pathname,
         at: Date.now()
       };
@@ -235,22 +236,73 @@
     updateProgress();
   }
 
-  // Index page: surface the most recent unfinished chapter.
+  // Progress keys are "<language>/<book>/<chapter>", so a book's history is
+  // everything whose middle segment matches.
+  function entriesForBook(bookSlug) {
+    var language = document.documentElement.lang;
+    return Object.keys(progress)
+      .filter(function (key) {
+        var parts = key.split('/');
+        // Only offer to resume reading the reader can actually read: a Turkish
+        // page never points back at an English chapter.
+        if (parts.length !== 3 || parts[0] !== language) return false;
+        return !bookSlug || parts[1] === bookSlug;
+      })
+      .map(function (key) {
+        var entry = progress[key];
+        return entry && entry.url ? entry : null;
+      })
+      .filter(Boolean);
+  }
+
+  function mostRecent(entries, unfinishedOnly) {
+    var best = null;
+    entries.forEach(function (entry) {
+      if (unfinishedOnly && entry.ratio >= 0.97) return;
+      if (!best || entry.at > best.at) best = entry;
+    });
+    return best;
+  }
+
+  // Book page: surface the most recent unfinished chapter of this book.
   var resumeLink = document.getElementById('resume-link');
   if (resumeLink) {
-    var newest = null;
-    Object.keys(progress).forEach(function (key) {
-      var entry = progress[key];
-      if (!entry || !entry.url || entry.ratio >= 0.97) return;
-      if (key.indexOf(document.documentElement.lang + '/') !== 0) return;
-      if (!newest || entry.at > newest.at) newest = entry;
-    });
+    var pageBook = (window.location.pathname.split('/book/')[1] || '').split('/')[0];
+    var newest = mostRecent(entriesForBook(pageBook || null), true);
     if (newest) {
       resumeLink.href = newest.url;
       resumeLink.hidden = false;
       resumeLink.textContent = resumeLink.textContent.trim() + ' — ' + newest.title;
     }
   }
+
+  // Library page: a "continue reading" card plus a progress bar per book.
+  var continueRow = document.getElementById('continue-row');
+  if (continueRow) {
+    var latest = mostRecent(entriesForBook(null), true);
+    if (latest) {
+      var card = document.getElementById('continue-card');
+      var percent = Math.round(latest.ratio * 100);
+      card.href = latest.url;
+      card.querySelector('[data-continue-title]').textContent = latest.title;
+      card.querySelector('[data-continue-book]').textContent = latest.book || '';
+      card.querySelector('[data-continue-fill]').style.width = percent + '%';
+      card.querySelector('[data-continue-percent]').textContent = percent + '%';
+      continueRow.hidden = false;
+    }
+  }
+
+  document.querySelectorAll('[data-book-slug]').forEach(function (card) {
+    var wrap = card.querySelector('[data-book-progress]');
+    if (!wrap) return;
+    var entries = entriesForBook(card.getAttribute('data-book-slug'));
+    if (!entries.length) return;
+    var recent = mostRecent(entries, false);
+    var percent = Math.round(recent.ratio * 100);
+    card.querySelector('[data-book-fill]').style.width = percent + '%';
+    card.querySelector('[data-book-label]').textContent = recent.title + ' · ' + percent + '%';
+    wrap.hidden = false;
+  });
 
   document.querySelectorAll('.chapter-card').forEach(function (card) {
     var badge = card.querySelector('[data-resume-badge]');
