@@ -132,6 +132,26 @@ def create_app() -> Flask:
             "updated_human": updated.strftime("%d %b %Y, %H:%M UTC") if updated else "",
             "current_endpoint": request.endpoint,
             "view_args": dict(request.view_args or {}),
+            # Nobody has told us which language they want yet: no saved choice
+            # and no ?lang= on the link they followed. Every response sets the
+            # cookie, so the picker is offered once and never nags again.
+            "first_visit": LANG_COOKIE not in request.cookies and not request.args.get("lang"),
+            # Handed to the browser as JSON: notifications are composed in the
+            # page, but the wording has to come from here to stay translated.
+            # Fetched without kwargs so the {placeholders} survive for JS.
+            "notification_strings": {
+                "one": translate("notification_title"),
+                "many": translate("notification_title_many"),
+                "body": translate("notification_body"),
+                "bannerOne": translate("new_chapters_one"),
+                "bannerMany": translate("new_chapters_many"),
+                "subscribed": translate("subscribe_done"),
+                "unsubscribed": translate("unsubscribe_done"),
+                "blocked": translate("subscribe_blocked"),
+                "unsupported": translate("subscribe_unsupported"),
+                "chapterNumber": translate("chapter_number"),
+                "restartBody": translate("restart_body"),
+            },
         }
 
     def language_variants(book_slug: str | None, chapter_slug: str | None) -> list[dict]:
@@ -198,10 +218,11 @@ def create_app() -> Flask:
 
     @app.route("/")
     def root():
-        language = pick_language()
-        return with_language_cookie(
-            make_response(redirect(url_for("index", lang=language))), language
-        )
+        # Deliberately no cookie here: guessing a language from the browser's
+        # headers is not the reader choosing one, and stamping the cookie on
+        # the redirect would suppress the first-visit picker on the page it
+        # lands on. The rendered page sets it.
+        return redirect(url_for("index", lang=pick_language()))
 
     def shelf_entry(book, language: str) -> dict | None:
         """Everything the library grid needs for one book."""

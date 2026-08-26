@@ -45,6 +45,21 @@
     } catch (err) { /* private mode, quota — not worth interrupting reading */ }
   }
 
+  var phrases = (function () {
+    var node = document.getElementById('dwfe-i18n');
+    try {
+      return node ? JSON.parse(node.textContent) : {};
+    } catch (err) {
+      return {};
+    }
+  })();
+
+  function fill(template, values) {
+    return String(template || '').replace(/\{(\w+)\}/g, function (whole, key) {
+      return values[key] !== undefined ? values[key] : whole;
+    });
+  }
+
   function announce(message) {
     if (!live || !message) return;
     live.textContent = '';
@@ -138,6 +153,20 @@
   openers.forEach(function (button) {
     button.addEventListener('click', toggleDialog);
   });
+
+  /* --- first-visit language picker ---------------------------------------- */
+
+  // The server renders it already open so it works without JavaScript; with
+  // scripting we upgrade it to a real modal for the focus trap and backdrop.
+  var languageDialog = document.getElementById('language-dialog');
+  if (languageDialog && typeof languageDialog.showModal === 'function') {
+    try {
+      if (languageDialog.open) languageDialog.close();
+      languageDialog.showModal();
+      var firstOption = languageDialog.querySelector('.language-options a');
+      if (firstOption) firstOption.focus();
+    } catch (err) { /* leave it open and inline rather than losing the prompt */ }
+  }
 
   /* --- language switcher -------------------------------------------------- */
 
@@ -250,7 +279,9 @@
       })
       .map(function (key) {
         var entry = progress[key];
-        return entry && entry.url ? entry : null;
+        // A shallow copy so the key travels with the entry without being
+        // written back into storage.
+        return entry && entry.url ? Object.assign({ key: key }, entry) : null;
       })
       .filter(Boolean);
   }
@@ -272,7 +303,42 @@
     if (newest) {
       resumeLink.href = newest.url;
       resumeLink.hidden = false;
-      resumeLink.textContent = resumeLink.textContent.trim() + ' — ' + newest.title;
+      resumeLink.title = newest.title;
+      // "Continue reading — Chapter 2" reads quicker than the chapter's name,
+      // and keeps the button to a predictable width. The number comes from the
+      // slug, so positions saved before this existed still work.
+      var numbered = /(?:^|\/)chapter-(\d+)$/.exec(newest.key || '');
+      var where = numbered
+        ? fill(phrases.chapterNumber, { number: numbered[1] })
+        : newest.title;
+      resumeLink.textContent = resumeLink.textContent.trim() + ' — ' + where;
+
+      // Mid-book, the action you want is "carry on", not "start". Swap the
+      // emphasis, rename the other button for what it now does, and move it
+      // out of the way to the end.
+      var startLink = document.getElementById('start-link');
+      if (startLink) {
+        var actions = startLink.parentNode;
+        resumeLink.classList.remove('ghost-button');
+        resumeLink.classList.add('primary-button');
+        startLink.classList.remove('primary-button');
+        startLink.classList.add('ghost-button');
+        startLink.textContent = startLink.getAttribute('data-label-restart') || startLink.textContent;
+        actions.insertBefore(resumeLink, actions.firstChild);
+        actions.appendChild(startLink);
+
+        // Opening chapter one makes it the place "continue" returns to, so
+        // check that is what they meant.
+        var restartDialog = document.getElementById('restart-dialog');
+        if (restartDialog && typeof restartDialog.showModal === 'function') {
+          var body = restartDialog.querySelector('[data-restart-body]');
+          if (body) body.textContent = fill(phrases.restartBody, { chapter: where });
+          startLink.addEventListener('click', function (event) {
+            event.preventDefault();
+            restartDialog.showModal();
+          });
+        }
+      }
     }
   }
 
@@ -411,6 +477,178 @@
     window.addEventListener('pagehide', stop);
     window.dwfeToggleSpeech = function () { listenButton.click(); };
   }
+
+  /* --- new-chapter subscriptions ------------------------------------------- */
+
+  // A subscription is a note in this browser: which books to watch and how
+  // many chapters each had when last seen. Nothing is sent anywhere, so there
+  // is no account to make and nothing to unsubscribe from by email. The cost
+  // is that notifications can only be raised while the site is open — the page
+  // says so before asking for permission, and new chapters are marked here on
+  // the next visit regardless.
+  var SUBS_KEY = 'dwfe:subscriptions';
+  var POLL_MS = 5 * 60 * 1000;
+
+  var subscriptions = readStore(SUBS_KEY, {});
+
+  function saveSubscriptions() { writeStore(SUBS_KEY, subscriptions); }
+
+  function canNotify() {
+    return typeof window.Notification === 'function';
+  }
+
+  function raiseNotification(book, chapters, added) {
+    if (!canNotify() || window.Notification.permission !== 'granted') return;
+    var latest = chapters[chapters.length - 1];
+    var title = added === 1
+      ? fill(phrases.one, { title: latest.title })
+      : fill(phrases.many, { count: added });
+    try {
+      var note = new window.Notification(title, {
+        body: fill(phrases.body, { book: book.title }),
+        icon: '/static/img/favicon.svg',
+        tag: 'dwfe-' + book.slug          // one book, one notification
+      });
+      note.onclick = function () {
+        window.focus();
+        window.location.href = latest.url;
+      };
+    } catch (err) { /* a browser may refuse outside a user gesture */ }
+  }
+
+  var banner = document.getElementById('new-chapters');
+
+  function showBanner(added, latest) {
+    if (!banner) return;
+    banner.querySelector('[data-new-chapters-text]').textContent = added === 1
+      ? phrases.bannerOne
+      : fill(phrases.bannerMany, { count: added });
+    banner.querySelector('[data-new-chapters-link]').href = latest.url;
+    banner.hidden = false;
+  }
+
+  if (banner) {
+    banner.querySelector('[data-new-chapters-dismiss]').addEventListener('click', function () {
+      banner.hidden = true;
+    });
+  }
+
+  var subscribeButton = document.querySelector('[data-subscribe]');
+  var subscribeDialog = document.getElementById('subscribe-dialog');
+
+  function paintSubscribeButton() {
+    if (!subscribeButton) return;
+    var slug = subscribeButton.getAttribute('data-book');
+    var on = Boolean(subscriptions[slug]);
+    subscribeButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+    subscribeButton.classList.toggle('is-subscribed', on);
+    subscribeButton.querySelector('[data-subscribe-label]').textContent =
+      subscribeButton.getAttribute(on ? 'data-label-off' : 'data-label-on');
+    subscribeButton.hidden = false;   // only offered where the script runs
+  }
+
+  function subscribe() {
+    var slug = subscribeButton.getAttribute('data-book');
+    var title = subscribeButton.getAttribute('data-book-title');
+    subscriptions[slug] = {
+      lang: subscribeButton.getAttribute('data-lang'),
+      count: parseInt(subscribeButton.getAttribute('data-count'), 10) || 0,
+      title: title,
+      at: Date.now()
+    };
+    saveSubscriptions();
+    paintSubscribeButton();
+
+    if (!canNotify()) {
+      announce(phrases.unsupported);
+    } else if (window.Notification.permission === 'denied') {
+      announce(phrases.blocked);
+    } else {
+      announce(fill(phrases.subscribed, { book: title }));
+    }
+  }
+
+  if (subscribeButton) {
+    paintSubscribeButton();
+
+    subscribeButton.addEventListener('click', function () {
+      var slug = subscribeButton.getAttribute('data-book');
+      if (subscriptions[slug]) {
+        var title = subscriptions[slug].title;
+        delete subscriptions[slug];
+        saveSubscriptions();
+        paintSubscribeButton();
+        announce(fill(phrases.unsubscribed, { book: title }));
+        return;
+      }
+
+      // Explain what the browser is about to ask before it asks.
+      if (canNotify() && window.Notification.permission === 'default' && subscribeDialog) {
+        if (typeof subscribeDialog.showModal === 'function') {
+          subscribeDialog.showModal();
+        } else {
+          subscribeDialog.setAttribute('open', '');
+        }
+        return;
+      }
+      subscribe();
+    });
+  }
+
+  if (subscribeDialog) {
+    var confirmButton = subscribeDialog.querySelector('[data-subscribe-confirm]');
+    if (confirmButton) {
+      confirmButton.addEventListener('click', function () {
+        subscribeDialog.close();
+        try {
+          var asked = window.Notification.requestPermission();
+          if (asked && typeof asked.then === 'function') {
+            asked.then(subscribe, subscribe);
+          } else {
+            subscribe();
+          }
+        } catch (err) {
+          subscribe();
+        }
+      });
+    }
+  }
+
+  function checkSubscriptions() {
+    var slugs = Object.keys(subscriptions);
+    if (!slugs.length || !window.fetch) return;
+
+    fetch('/api/library', { headers: { Accept: 'application/json' } })
+      .then(function (response) { return response.json(); })
+      .then(function (payload) {
+        var changed = false;
+        (payload.books || []).forEach(function (book) {
+          var sub = subscriptions[book.slug];
+          if (!sub) return;
+          var chapters = book.editions[sub.lang] || book.editions[Object.keys(book.editions)[0]];
+          if (!chapters) return;
+
+          var added = chapters.length - sub.count;
+          if (added > 0) {
+            raiseNotification(book, chapters, added);
+            if (subscribeButton && subscribeButton.getAttribute('data-book') === book.slug) {
+              showBanner(added, chapters[chapters.length - 1]);
+            }
+            sub.count = chapters.length;
+            changed = true;
+          } else if (added < 0) {
+            sub.count = chapters.length;   // a chapter was withdrawn
+            changed = true;
+          }
+        });
+        if (changed) saveSubscriptions();
+      })
+      .catch(function () { /* offline: try again on the next tick */ });
+  }
+
+  checkSubscriptions();
+  window.addEventListener('focus', checkSubscriptions);
+  window.setInterval(checkSubscriptions, POLL_MS);
 
   /* --- keyboard shortcuts -------------------------------------------------- */
 

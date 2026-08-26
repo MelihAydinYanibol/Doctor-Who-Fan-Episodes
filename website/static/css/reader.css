@@ -943,6 +943,111 @@ kbd {
 .book-first { font-size: .84rem; color: var(--ink-faint); line-height: 1.4; }
 .shelf-item:only-child .book-meta { align-content: center; }
 
+/* --- first-visit language picker ------------------------------------------ */
+
+.language-dialog {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  color: var(--ink);
+  padding: 1.3rem 1.4rem 1.5rem;
+  width: min(100% - 2rem, 26rem);
+  box-shadow: 0 1px 2px rgba(8, 10, 16, .2), 0 24px 60px -20px rgba(8, 10, 16, .55);
+}
+/* Open without showModal() (no JavaScript): centre it ourselves, since a
+   non-modal dialog sits in the normal flow and has no backdrop. */
+.language-dialog[open] {
+  position: fixed;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 70;
+  margin: 0;
+}
+.language-dialog::backdrop { background: rgba(8, 10, 16, .55); }
+
+.language-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.language-dialog-head h2 {
+  margin: 0;
+  font-family: var(--font-reader);
+  font-size: 1.35rem;
+}
+.language-dialog-head form { display: flex; }
+.language-dialog-body { color: var(--ink-soft); margin: .4rem 0 1.2rem; }
+
+.language-options {
+  list-style: none;
+  margin: 0 0 1.2rem;
+  padding: 0;
+  display: grid;
+  gap: .6rem;
+}
+.language-options a {
+  width: 100%;
+  justify-content: center;
+  font-size: 1rem;
+}
+
+.language-note {
+  margin: 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  font-size: .84rem;
+  color: var(--ink-faint);
+}
+
+/* --- new-chapter subscriptions -------------------------------------------- */
+
+.ghost-button.is-subscribed {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.book-hero.has-cover .ghost-button.is-subscribed {
+  background: rgba(255, 255, 255, .16);
+  border-color: #fff;
+  color: #fff;
+}
+
+.new-chapters {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  flex-wrap: wrap;
+  margin: 1.6rem 0 0;
+  padding: .8rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+.new-chapters-text { flex: 1; min-width: 12rem; font-weight: 600; }
+.primary-button.small { padding: .4rem .8rem; font-size: .84rem; }
+
+.subscribe-caveat { margin-bottom: 1.2rem; }
+
+/* A resumed chapter title can be long; keep the button to one line. */
+#resume-link {
+  max-width: min(100%, 24rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  /* Three buttons stacked at ragged widths look accidental; make them one
+     tidy column instead. */
+  .hero-actions { display: grid; gap: .6rem; }
+  .hero-actions > * { width: 100%; justify-content: center; }
+  #resume-link { max-width: 100%; }
+}
+
 /* --- tables inside repository documents ----------------------------------- */
 
 .document .table-wrap { overflow-x: auto; margin: 0 0 1.5rem; }

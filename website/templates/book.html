@@ -19,14 +19,84 @@
     </p>
     <div class="hero-actions">
       {% if edition.chapters %}
-      <a class="primary-button" href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=edition.chapters[0].slug) }}">
+      <a class="primary-button" id="start-link"
+         data-label-start="{{ t('start_reading') }}"
+         data-label-restart="{{ t('start_from_beginning') }}"
+         href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=edition.chapters[0].slug) }}">
         {{ t('start_reading') }}
       </a>
       {% endif %}
       <a class="ghost-button" id="resume-link" hidden href="#">{{ t('continue_reading') }}</a>
+
+      <button type="button" class="ghost-button" id="subscribe-button" hidden
+              data-subscribe
+              data-book="{{ book.slug }}"
+              data-book-title="{{ book.title }}"
+              data-lang="{{ edition.language }}"
+              data-count="{{ edition.chapters|length }}"
+              data-label-on="{{ t('subscribe_button') }}"
+              data-label-off="{{ t('unsubscribe_button') }}"
+              aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm6.5-5.3v-5.2a6.6 6.6 0 0 0-5-6.4V4.3a1.5 1.5 0 0 0-3 0v.8a6.6 6.6 0 0 0-5 6.4v5.2L4 18.2v.9h16v-.9Z"/></svg>
+        <span data-subscribe-label>{{ t('subscribe_button') }}</span>
+      </button>
     </div>
   </div>
 </section>
+
+<div class="shell">
+  <div class="new-chapters" id="new-chapters" hidden role="status">
+    <span class="new-chapters-text" data-new-chapters-text></span>
+    <a class="primary-button small" data-new-chapters-link href="#">{{ t('read_it') }}</a>
+    <button type="button" class="icon-button" data-new-chapters-dismiss aria-label="{{ t('dismiss') }}">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="m12 10.6 5-5 1.4 1.4-5 5 5 5-1.4 1.4-5-5-5 5-1.4-1.4 5-5-5-5L7 5.6Z"/></svg>
+    </button>
+  </div>
+</div>
+
+<dialog id="restart-dialog" class="language-dialog" aria-labelledby="restart-dialog-title">
+  <div class="language-dialog-head">
+    <h2 id="restart-dialog-title">{{ t('restart_title') }}</h2>
+    <form method="dialog">
+      <button class="icon-button" value="cancel" aria-label="{{ t('close') }}">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="m12 10.6 5-5 1.4 1.4-5 5 5 5-1.4 1.4-5-5-5 5-1.4-1.4 5-5-5-5L7 5.6Z"/></svg>
+      </button>
+    </form>
+  </div>
+
+  <p class="language-dialog-body" data-restart-body></p>
+
+  <div class="settings-actions">
+    <form method="dialog">
+      <button class="ghost-button" value="cancel">{{ t('restart_cancel') }}</button>
+    </form>
+    <a class="primary-button" data-restart-confirm
+       href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=edition.chapters[0].slug) if edition.chapters else '#' }}">
+      {{ t('restart_confirm') }}
+    </a>
+  </div>
+</dialog>
+
+<dialog id="subscribe-dialog" class="language-dialog" aria-labelledby="subscribe-dialog-title">
+  <div class="language-dialog-head">
+    <h2 id="subscribe-dialog-title">{{ t('subscribe_title') }}</h2>
+    <form method="dialog">
+      <button class="icon-button" value="cancel" aria-label="{{ t('close') }}">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="m12 10.6 5-5 1.4 1.4-5 5 5 5-1.4 1.4-5-5-5 5-1.4-1.4 5-5-5-5L7 5.6Z"/></svg>
+      </button>
+    </form>
+  </div>
+
+  <p class="language-dialog-body">{{ t('subscribe_body', book=book.title) }}</p>
+  <p class="language-note subscribe-caveat">{{ t('subscribe_caveat') }}</p>
+
+  <div class="settings-actions">
+    <form method="dialog">
+      <button class="ghost-button" value="cancel">{{ t('subscribe_cancel') }}</button>
+    </form>
+    <button type="button" class="primary-button" data-subscribe-confirm>{{ t('subscribe_confirm') }}</button>
+  </div>
+</dialog>
 
 <section class="shell chapters" aria-labelledby="chapters-heading">
   <div class="section-head">
