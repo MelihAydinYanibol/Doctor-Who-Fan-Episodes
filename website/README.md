@@ -94,6 +94,14 @@ things can trigger the re-read, and all of them are safe to combine:
 1. **Time.** The chapter index is re-read when it is older than
    `DWFE_CACHE_TTL` seconds (default 300). Chapter bodies are cached by their
    git blob SHA, so a refresh only downloads what actually changed.
+
+   Reading from a checkout on disk skips the wait entirely: re-listing it
+   takes about 0.08 ms, so the index is rebuilt on every request and an edit
+   to a chapter shows up as soon as you save it. The TTL is there to spare the
+   GitHub API, so it still applies whenever GitHub is in play — including
+   `auto` mode, where an unreachable API would otherwise be retried, and time
+   out, on every request. `DWFE_LOCAL_CACHE_TTL` throttles the local rebuild
+   if you ever need it to.
 2. **A push webhook.** Point a GitHub webhook at `POST /webhook/github`
    (content type `application/json`, secret = `DWFE_WEBHOOK_SECRET`) and the
    site refreshes the moment you push. The signature is verified; unsigned
@@ -117,7 +125,8 @@ All optional, all environment variables:
 | `DWFE_GITHUB_REPO` | `MelihAydinYanibol/Doctor-Who-Fan-Episodes` | `owner/name` |
 | `DWFE_GITHUB_BRANCH` | `main` | branch to read |
 | `DWFE_GITHUB_TOKEN` | — | optional; raises the API rate limit from 60/h to 5000/h |
-| `DWFE_CACHE_TTL` | `300` | seconds before the chapter index is re-read |
+| `DWFE_CACHE_TTL` | `300` | seconds before the chapter index is re-read from GitHub |
+| `DWFE_LOCAL_CACHE_TTL` | `0` | the same, for a checkout on disk — zero means edits appear at once |
 | `DWFE_REFRESH_TOKEN` | — | required header for `POST /api/refresh` |
 | `DWFE_WEBHOOK_SECRET` | — | GitHub webhook secret |
 | `DWFE_HOST` / `DWFE_PORT` | `127.0.0.1` / `5000` | dev server binding |

@@ -13,6 +13,8 @@ Configuration (all optional, all via environment variables):
     DWFE_GITHUB_BRANCH   branch to read (default: main)
     DWFE_GITHUB_TOKEN    optional token, raises the GitHub API rate limit
     DWFE_CACHE_TTL       seconds between automatic re-reads (default: 300)
+    DWFE_LOCAL_CACHE_TTL same, for a local checkout, where re-reading is cheap
+                         (default: 0 — edits appear as soon as they are saved)
     DWFE_REFRESH_TOKEN   shared secret for POST /api/refresh
     DWFE_WEBHOOK_SECRET  secret for the GitHub push webhook at /webhook/github
 """
@@ -65,6 +67,7 @@ def create_app() -> Flask:
         GITHUB_BRANCH=os.environ.get("DWFE_GITHUB_BRANCH", "main"),
         GITHUB_TOKEN=os.environ.get("DWFE_GITHUB_TOKEN") or None,
         CACHE_TTL=float(os.environ.get("DWFE_CACHE_TTL", "300")),
+        LOCAL_CACHE_TTL=float(os.environ.get("DWFE_LOCAL_CACHE_TTL", "0")),
         REFRESH_TOKEN=os.environ.get("DWFE_REFRESH_TOKEN") or None,
         WEBHOOK_SECRET=os.environ.get("DWFE_WEBHOOK_SECRET") or None,
         JSON_AS_ASCII=False,
@@ -77,6 +80,7 @@ def create_app() -> Flask:
         github_token=app.config["GITHUB_TOKEN"],
         mode=app.config["SOURCE"],
         ttl=app.config["CACHE_TTL"],
+        local_ttl=app.config["LOCAL_CACHE_TTL"],
     )
     app.extensions["content"] = service
 
