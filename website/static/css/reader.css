@@ -1029,3 +1029,21 @@ kbd {
 .primary-button.small { padding: .4rem .8rem; font-size: .84rem; }
 
 .subscribe-caveat { margin-bottom: 1.2rem; }
+
+/* A resumed chapter title can be long; keep the button to one line. */
+#resume-link {
+  max-width: min(100%, 24rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  /* Three buttons stacked at ragged widths look accidental; make them one
+     tidy column instead. */
+  .hero-actions { display: grid; gap: .6rem; }
+  .hero-actions > * { width: 100%; justify-content: center; }
+  #resume-link { max-width: 100%; }
+}

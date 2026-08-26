@@ -286,7 +286,21 @@
     if (newest) {
       resumeLink.href = newest.url;
       resumeLink.hidden = false;
+      resumeLink.title = newest.title;
       resumeLink.textContent = resumeLink.textContent.trim() + ' — ' + newest.title;
+
+      // Mid-book, the action you want is "carry on", not "start". Swap the
+      // emphasis and rename the other button for what it now does.
+      var startLink = document.getElementById('start-link');
+      if (startLink) {
+        resumeLink.classList.remove('ghost-button');
+        resumeLink.classList.add('primary-button');
+        startLink.classList.remove('primary-button');
+        startLink.classList.add('ghost-button');
+        startLink.textContent = startLink.getAttribute('data-label-restart') || startLink.textContent;
+        // Lead with the action they actually want, in reading order.
+        startLink.parentNode.insertBefore(resumeLink, startLink);
+      }
     }
   }
 

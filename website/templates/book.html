@@ -19,7 +19,10 @@
     </p>
     <div class="hero-actions">
       {% if edition.chapters %}
-      <a class="primary-button" href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=edition.chapters[0].slug) }}">
+      <a class="primary-button" id="start-link"
+         data-label-start="{{ t('start_reading') }}"
+         data-label-restart="{{ t('start_from_beginning') }}"
+         href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=edition.chapters[0].slug) }}">
         {{ t('start_reading') }}
       </a>
       {% endif %}
