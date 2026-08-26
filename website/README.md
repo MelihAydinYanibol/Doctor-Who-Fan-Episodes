@@ -11,6 +11,7 @@ website/
 ├── content.py         finds chapters (local checkout or GitHub) and parses the prose
 ├── i18n.py            interface translations (English, Turkish) + language names
 ├── markdown_lite.py   tiny Markdown/plain-text renderer for README and LICENSE
+│                     (headings, emphasis, links, lists, rules, tables)
 ├── test_reader.py     unit tests (no network, no fixtures on the real book)
 ├── templates/         Jinja templates
 └── static/            stylesheet, reader script, favicon
@@ -206,9 +207,9 @@ reports whether chapters are loading, for uptime checks.
 cd website && python -m unittest discover
 ```
 
-30 tests covering file-name parsing, language detection, banner discovery,
-prose parsing, HTML escaping, the GitHub source (with stubbed HTTP), webhook
-signatures, refresh tokens, and every route.
+33 tests covering file-name parsing, language detection, banner discovery,
+prose and Markdown parsing (tables included), HTML escaping, the GitHub source
+(with stubbed HTTP), webhook signatures, refresh tokens, and every route.
 
 ## Licence
 

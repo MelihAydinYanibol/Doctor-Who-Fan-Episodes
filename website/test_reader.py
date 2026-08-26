@@ -95,6 +95,35 @@ class ParsingTests(unittest.TestCase):
         plain = render_document("Line one\nLine two\n", "LICENSE")
         self.assertIn("Line one<br>Line two", plain)
 
+    def test_markdown_tables(self):
+        # The contributors table in the repository README has an empty header
+        # row, which should not produce a band of blank column headings.
+        html = render_document(
+            "| | |\n| --- | --- |\n| **A** ([@a](https://example.com/a)) | Lead writer |\n",
+            "README.md",
+        )
+        self.assertIn("<table>", html)
+        self.assertNotIn("<thead>", html)
+        self.assertIn("<td><strong>A</strong>", html)
+        self.assertIn("<td>Lead writer</td>", html)
+        self.assertIn('class="table-wrap"', html)
+
+        titled = render_document(
+            "| Name | Role | Note |\n| :--- | :--: | ---: |\n| A | B | C |\n", "README.md"
+        )
+        self.assertIn("<thead><tr><th style=\"text-align: left\">Name</th>", titled)
+        self.assertIn('<th style="text-align: center">Role</th>', titled)
+        self.assertIn('<td style="text-align: right">C</td>', titled)
+
+    def test_a_rule_is_still_a_rule_not_a_table(self):
+        html = render_document("Above\n\n---\n\nBelow\n", "README.md")
+        self.assertIn("<hr>", html)
+        self.assertNotIn("<table>", html)
+
+    def test_ragged_table_rows_do_not_lose_cells(self):
+        html = render_document("| a | b | c |\n| --- | --- | --- |\n| 1 | 2 |\n", "README.md")
+        self.assertEqual(html.count("<td"), 3)
+
     def test_find_cover_prefers_banner_and_ignores_prose(self):
         from content import FileEntry
 
