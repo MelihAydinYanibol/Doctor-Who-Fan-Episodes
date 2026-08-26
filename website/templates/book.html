@@ -54,6 +54,29 @@
   </div>
 </div>
 
+<dialog id="restart-dialog" class="language-dialog" aria-labelledby="restart-dialog-title">
+  <div class="language-dialog-head">
+    <h2 id="restart-dialog-title">{{ t('restart_title') }}</h2>
+    <form method="dialog">
+      <button class="icon-button" value="cancel" aria-label="{{ t('close') }}">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="m12 10.6 5-5 1.4 1.4-5 5 5 5-1.4 1.4-5-5-5 5-1.4-1.4 5-5-5-5L7 5.6Z"/></svg>
+      </button>
+    </form>
+  </div>
+
+  <p class="language-dialog-body" data-restart-body></p>
+
+  <div class="settings-actions">
+    <form method="dialog">
+      <button class="ghost-button" value="cancel">{{ t('restart_cancel') }}</button>
+    </form>
+    <a class="primary-button" data-restart-confirm
+       href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=edition.chapters[0].slug) if edition.chapters else '#' }}">
+      {{ t('restart_confirm') }}
+    </a>
+  </div>
+</dialog>
+
 <dialog id="subscribe-dialog" class="language-dialog" aria-labelledby="subscribe-dialog-title">
   <div class="language-dialog-head">
     <h2 id="subscribe-dialog-title">{{ t('subscribe_title') }}</h2>

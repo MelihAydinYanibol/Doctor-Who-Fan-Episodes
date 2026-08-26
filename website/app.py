@@ -149,6 +149,8 @@ def create_app() -> Flask:
                 "unsubscribed": translate("unsubscribe_done"),
                 "blocked": translate("subscribe_blocked"),
                 "unsupported": translate("subscribe_unsupported"),
+                "chapterNumber": translate("chapter_number"),
+                "restartBody": translate("restart_body"),
             },
         }
 

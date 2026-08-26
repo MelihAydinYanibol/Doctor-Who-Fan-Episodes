@@ -45,6 +45,21 @@
     } catch (err) { /* private mode, quota — not worth interrupting reading */ }
   }
 
+  var phrases = (function () {
+    var node = document.getElementById('dwfe-i18n');
+    try {
+      return node ? JSON.parse(node.textContent) : {};
+    } catch (err) {
+      return {};
+    }
+  })();
+
+  function fill(template, values) {
+    return String(template || '').replace(/\{(\w+)\}/g, function (whole, key) {
+      return values[key] !== undefined ? values[key] : whole;
+    });
+  }
+
   function announce(message) {
     if (!live || !message) return;
     live.textContent = '';
@@ -264,7 +279,9 @@
       })
       .map(function (key) {
         var entry = progress[key];
-        return entry && entry.url ? entry : null;
+        // A shallow copy so the key travels with the entry without being
+        // written back into storage.
+        return entry && entry.url ? Object.assign({ key: key }, entry) : null;
       })
       .filter(Boolean);
   }
@@ -287,19 +304,40 @@
       resumeLink.href = newest.url;
       resumeLink.hidden = false;
       resumeLink.title = newest.title;
-      resumeLink.textContent = resumeLink.textContent.trim() + ' — ' + newest.title;
+      // "Continue reading — Chapter 2" reads quicker than the chapter's name,
+      // and keeps the button to a predictable width. The number comes from the
+      // slug, so positions saved before this existed still work.
+      var numbered = /(?:^|\/)chapter-(\d+)$/.exec(newest.key || '');
+      var where = numbered
+        ? fill(phrases.chapterNumber, { number: numbered[1] })
+        : newest.title;
+      resumeLink.textContent = resumeLink.textContent.trim() + ' — ' + where;
 
       // Mid-book, the action you want is "carry on", not "start". Swap the
-      // emphasis and rename the other button for what it now does.
+      // emphasis, rename the other button for what it now does, and move it
+      // out of the way to the end.
       var startLink = document.getElementById('start-link');
       if (startLink) {
+        var actions = startLink.parentNode;
         resumeLink.classList.remove('ghost-button');
         resumeLink.classList.add('primary-button');
         startLink.classList.remove('primary-button');
         startLink.classList.add('ghost-button');
         startLink.textContent = startLink.getAttribute('data-label-restart') || startLink.textContent;
-        // Lead with the action they actually want, in reading order.
-        startLink.parentNode.insertBefore(resumeLink, startLink);
+        actions.insertBefore(resumeLink, actions.firstChild);
+        actions.appendChild(startLink);
+
+        // Opening chapter one makes it the place "continue" returns to, so
+        // check that is what they meant.
+        var restartDialog = document.getElementById('restart-dialog');
+        if (restartDialog && typeof restartDialog.showModal === 'function') {
+          var body = restartDialog.querySelector('[data-restart-body]');
+          if (body) body.textContent = fill(phrases.restartBody, { chapter: where });
+          startLink.addEventListener('click', function (event) {
+            event.preventDefault();
+            restartDialog.showModal();
+          });
+        }
       }
     }
   }
@@ -450,21 +488,6 @@
   // the next visit regardless.
   var SUBS_KEY = 'dwfe:subscriptions';
   var POLL_MS = 5 * 60 * 1000;
-
-  var phrases = (function () {
-    var node = document.getElementById('dwfe-i18n');
-    try {
-      return node ? JSON.parse(node.textContent) : {};
-    } catch (err) {
-      return {};
-    }
-  })();
-
-  function fill(template, values) {
-    return String(template || '').replace(/\{(\w+)\}/g, function (whole, key) {
-      return values[key] !== undefined ? values[key] : whole;
-    });
-  }
 
   var subscriptions = readStore(SUBS_KEY, {});
 
