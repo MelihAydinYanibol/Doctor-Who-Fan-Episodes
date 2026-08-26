@@ -165,6 +165,49 @@ class LibraryTests(unittest.TestCase):
         library = self.service.refresh()
         self.assertEqual(len(library.books[0].editions["en"].chapters), 3)
 
+    def test_local_edits_appear_without_waiting_for_the_ttl(self):
+        # A long TTL must not hold back a checkout on disk: re-listing it costs
+        # a fraction of a millisecond, so an edit shows up on the next request.
+        service = ContentService(local_root=self.root, mode="local", ttl=300, local_ttl=0)
+        chapter = service.library().books[0].editions["en"].chapters[0]
+        self.assertIn("First paragraph.", [b.text for b in service.blocks(chapter)[0]])
+
+        path = os.path.join(self.root, "My Book", "Chapter I - Alpha")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("Chapter I – Alpha\n\nRewritten entirely.\n")
+
+        chapter = service.library().books[0].editions["en"].chapters[0]
+        texts = [b.text for b in service.blocks(chapter)[0]]
+        self.assertIn("Rewritten entirely.", texts)
+        self.assertNotIn("First paragraph.", texts)
+
+    def test_a_new_local_chapter_appears_without_waiting(self):
+        service = ContentService(local_root=self.root, mode="local", ttl=300, local_ttl=0)
+        self.assertEqual(len(service.library().books[0].editions["en"].chapters), 2)
+        with open(os.path.join(self.root, "My Book", "Chapter III - Gamma"), "w", encoding="utf-8") as handle:
+            handle.write("Chapter III – Gamma\n\nBrand new.\n")
+        self.assertEqual(len(service.library().books[0].editions["en"].chapters), 3)
+
+    def test_the_ttl_still_guards_github(self):
+        # With GitHub in play the TTL must hold, or an unreachable API would be
+        # retried — and time out — on every single request.
+        remote = ContentService(
+            local_root=self.root, github_repo="Owner/Repo", mode="auto", ttl=300, local_ttl=0
+        )
+        self.assertEqual(remote.effective_ttl(), 300)
+
+        forced = ContentService(
+            local_root=self.root, github_repo="Owner/Repo", mode="github", ttl=300, local_ttl=0
+        )
+        self.assertEqual(forced.effective_ttl(), 300)
+
+        local_only = ContentService(local_root=self.root, mode="local", ttl=300, local_ttl=0)
+        self.assertEqual(local_only.effective_ttl(), 0)
+
+        # And the local TTL is a knob, not a hard-coded zero.
+        throttled = ContentService(local_root=self.root, mode="local", ttl=300, local_ttl=30)
+        self.assertEqual(throttled.effective_ttl(), 30)
+
     def test_last_good_snapshot_survives_a_broken_source(self):
         self.service.library()
         self.service.local.root = os.path.join(self.root, "gone")

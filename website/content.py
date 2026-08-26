@@ -576,9 +576,11 @@ class ContentService:
         github_token: str | None = None,
         mode: str = "auto",
         ttl: float = 300.0,
+        local_ttl: float = 0.0,
     ):
         self.mode = mode
         self.ttl = ttl
+        self.local_ttl = local_ttl
         self.local = LocalSource(local_root)
         self.github = GitHubSource(github_repo, github_branch, github_token) if github_repo else None
         self._lock = threading.RLock()
@@ -600,12 +602,25 @@ class ContentService:
 
     # -- public API ---------------------------------------------------------
 
+    def effective_ttl(self) -> float:
+        """How long a chapter index may be reused before it is re-read.
+
+        Re-listing a checkout on disk costs a fraction of a millisecond, so
+        when the local source is the only one in play the index is rebuilt on
+        every request and an edit to a chapter shows up as soon as it is
+        saved. The TTL exists to spare the GitHub API, so it still applies
+        whenever GitHub is in the picture — in ``auto`` mode an unreachable
+        GitHub would otherwise be retried, and time out, on every request.
+        """
+        local_only = self.mode == "local" or self.github is None
+        return self.local_ttl if local_only else self.ttl
+
     def library(self, force: bool = False) -> Library:
         with self._lock:
             fresh = (
                 self._library is not None
                 and not force
-                and (time.time() - self._library.fetched_at) < self.ttl
+                and (time.time() - self._library.fetched_at) < self.effective_ttl()
             )
             if fresh:
                 return self._library
