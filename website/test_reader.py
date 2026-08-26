@@ -275,6 +275,15 @@ class RouteTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 302)
         self.assertIn("/en/", response.headers["Location"])
+        # The redirect must not stamp the language cookie: a guess from the
+        # browser's headers is not a choice, and the cookie would suppress the
+        # picker on the page the reader actually lands on.
+        self.assertNotIn("dwfe_lang", response.headers.get("Set-Cookie", ""))
+
+    def test_the_picker_survives_the_root_redirect(self):
+        self.client.get("/")
+        body = self.client.get("/en/").get_data(as_text=True)
+        self.assertIn('id="language-dialog"', body)
 
     def test_library_index_lists_books_not_chapters(self):
         body = self.client.get("/en/").get_data(as_text=True)
@@ -326,6 +335,41 @@ class RouteTests(unittest.TestCase):
         response = self.client.get("/tr/read/my-book/chapter-2")
         self.assertEqual(response.status_code, 404)
         self.assertIn("/en/read/my-book/chapter-2", response.get_data(as_text=True))
+
+    def test_first_visit_is_asked_to_pick_a_language(self):
+        body = self.client.get("/en/").get_data(as_text=True)
+        self.assertIn('id="language-dialog"', body)
+        # Every language is offered, and the note tells them it is not final.
+        self.assertIn("/tr/", body)
+        self.assertIn("change this whenever you like", body)
+
+    def test_the_picker_is_asked_once_and_then_never_again(self):
+        first = self.client.get("/en/")
+        self.assertIn('id="language-dialog"', first.get_data(as_text=True))
+        # The same client keeps the cookie the first response set.
+        second = self.client.get("/en/")
+        self.assertNotIn('id="language-dialog"', second.get_data(as_text=True))
+
+    def test_a_link_that_names_a_language_is_not_second_guessed(self):
+        body = self.client.get("/en/?lang=en").get_data(as_text=True)
+        self.assertNotIn('id="language-dialog"', body)
+
+    def test_the_picker_shows_on_a_chapter_landed_on_directly(self):
+        body = self.client.get("/tr/read/my-book/chapter-1").get_data(as_text=True)
+        self.assertIn('id="language-dialog"', body)
+
+    def test_no_picker_when_there_is_only_one_language(self):
+        root = tempfile.mkdtemp()
+        try:
+            os.makedirs(os.path.join(root, "Solo Book"))
+            with open(os.path.join(root, "Solo Book", "Chapter I - One"), "w", encoding="utf-8") as handle:
+                handle.write("Chapter I - One\n\nAlone.\n")
+            os.environ["DWFE_CONTENT_ROOT"] = root
+            client = create_app().test_client()
+            self.assertNotIn('id="language-dialog"', client.get("/en/").get_data(as_text=True))
+        finally:
+            os.environ["DWFE_CONTENT_ROOT"] = self.root
+            shutil.rmtree(root, ignore_errors=True)
 
     def test_legal_page_shows_repository_documents(self):
         body = self.client.get("/en/legal").get_data(as_text=True)

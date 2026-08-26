@@ -218,6 +218,37 @@
   </form>
 </dialog>
 
+{% if first_visit and languages|length > 1 %}
+{# Rendered already open so it works without JavaScript; reader.js upgrades it
+   to a proper modal (focus trap, backdrop, Esc) when scripting is available.
+   Every response sets the language cookie, so this is asked once. #}
+<dialog id="language-dialog" class="language-dialog" open aria-labelledby="language-dialog-title">
+  <div class="language-dialog-head">
+    <h2 id="language-dialog-title">{{ t('choose_language_title') }}</h2>
+    <form method="dialog">
+      <button class="icon-button" value="close" aria-label="{{ t('close') }}">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="m12 10.6 5-5 1.4 1.4-5 5 5 5-1.4 1.4-5-5-5 5-1.4-1.4 5-5-5-5L7 5.6Z"/></svg>
+      </button>
+    </form>
+  </div>
+
+  <p class="language-dialog-body">{{ t('choose_language_body') }}</p>
+
+  <ul class="language-options">
+    {% for variant in language_variants %}
+    <li>
+      <a class="{{ 'primary-button' if variant.code == lang else 'ghost-button' }}"
+         href="{{ variant.url }}" lang="{{ variant.code }}" hreflang="{{ variant.code }}">
+        {{ variant.name }}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+
+  <p class="language-note">{{ t('choose_language_note') }}</p>
+</dialog>
+{% endif %}
+
 <div id="live-region" class="visually-hidden" role="status" aria-live="polite"></div>
 
 <script src="{{ url_for('static', filename='js/reader.js') }}" defer></script>

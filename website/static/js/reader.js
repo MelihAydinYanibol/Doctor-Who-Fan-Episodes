@@ -139,6 +139,20 @@
     button.addEventListener('click', toggleDialog);
   });
 
+  /* --- first-visit language picker ---------------------------------------- */
+
+  // The server renders it already open so it works without JavaScript; with
+  // scripting we upgrade it to a real modal for the focus trap and backdrop.
+  var languageDialog = document.getElementById('language-dialog');
+  if (languageDialog && typeof languageDialog.showModal === 'function') {
+    try {
+      if (languageDialog.open) languageDialog.close();
+      languageDialog.showModal();
+      var firstOption = languageDialog.querySelector('.language-options a');
+      if (firstOption) firstOption.focus();
+    } catch (err) { /* leave it open and inline rather than losing the prompt */ }
+  }
+
   /* --- language switcher -------------------------------------------------- */
 
   var languageSelect = document.querySelector('[data-language-select]');

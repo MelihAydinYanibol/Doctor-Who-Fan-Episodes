@@ -155,6 +155,13 @@ preferences.
   theme, `+`/`-` text size, `l` read aloud. A skip link, visible focus rings,
   landmarks, live-region announcements and `lang` on every translated block
   make screen-reader and keyboard-only use practical.
+* **Language** — a first-time visitor is asked once which language they want
+  to read in, with a note that it can be changed at any time from the menu in
+  the header. The prompt is rendered already open so it works without
+  JavaScript, and is upgraded to a modal (focus trap, backdrop, Esc to close)
+  when scripting is available. It is skipped when the link already names a
+  language (`?lang=`), when a choice is already stored, and when the library
+  only has one language.
 * **Progress** — a progress bar, per-chapter position saved locally, a
   "Continue reading" card on the shelf, a progress bar on each book card and a
   percentage badge on chapters already started. Progress is tracked per
