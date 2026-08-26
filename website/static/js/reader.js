@@ -542,8 +542,16 @@
     var on = Boolean(subscriptions[slug]);
     subscribeButton.setAttribute('aria-pressed', on ? 'true' : 'false');
     subscribeButton.classList.toggle('is-subscribed', on);
+    // Highlighted means "this is on", so the label has to describe the state
+    // too. A highlighted "Stop notifying me" reads as an instruction to stop.
     subscribeButton.querySelector('[data-subscribe-label]').textContent =
-      subscribeButton.getAttribute(on ? 'data-label-off' : 'data-label-on');
+      subscribeButton.getAttribute(on ? 'data-label-state' : 'data-label-on');
+    // What the click will do belongs in the tooltip, not the label.
+    if (on) {
+      subscribeButton.title = subscribeButton.getAttribute('data-label-off');
+    } else {
+      subscribeButton.removeAttribute('title');
+    }
     subscribeButton.hidden = false;   // only offered where the script runs
   }
 
