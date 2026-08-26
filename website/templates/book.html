@@ -35,9 +35,11 @@
               data-lang="{{ edition.language }}"
               data-count="{{ edition.chapters|length }}"
               data-label-on="{{ t('subscribe_button') }}"
+              data-label-state="{{ t('subscribed_state') }}"
               data-label-off="{{ t('unsubscribe_button') }}"
               aria-pressed="false">
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm6.5-5.3v-5.2a6.6 6.6 0 0 0-5-6.4V4.3a1.5 1.5 0 0 0-3 0v.8a6.6 6.6 0 0 0-5 6.4v5.2L4 18.2v.9h16v-.9Z"/></svg>
+        <svg class="bell-off" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.7" d="M12 21.2a1.6 1.6 0 0 0 1.6-1.6h-3.2A1.6 1.6 0 0 0 12 21.2Zm5.9-5v-4.9a5.9 5.9 0 0 0-4.5-5.7v-.9a1.4 1.4 0 0 0-2.8 0v.9a5.9 5.9 0 0 0-4.5 5.7v4.9l-1.4 1.4v.6h14.6v-.6Z"/></svg>
+        <svg class="bell-on" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm6.5-5.3v-5.2a6.6 6.6 0 0 0-5-6.4V4.3a1.5 1.5 0 0 0-3 0v.8a6.6 6.6 0 0 0-5 6.4v5.2L4 18.2v.9h16v-.9Z"/></svg>
         <span data-subscribe-label>{{ t('subscribe_button') }}</span>
       </button>
     </div>

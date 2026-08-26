@@ -1079,3 +1079,9 @@ kbd {
   .document table { min-width: 0; font-size: .9rem; }
   .document th, .document td { padding: .5rem .4rem; }
 }
+
+/* The bell fills in once notifications are on, so the state reads at a glance
+   even before the label. */
+#subscribe-button .bell-on { display: none; }
+#subscribe-button.is-subscribed .bell-off { display: none; }
+#subscribe-button.is-subscribed .bell-on { display: inline; }
