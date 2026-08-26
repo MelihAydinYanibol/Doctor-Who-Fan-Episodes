@@ -249,6 +249,8 @@
 </dialog>
 {% endif %}
 
+<script type="application/json" id="dwfe-i18n">{{ notification_strings|tojson }}</script>
+
 <div id="live-region" class="visually-hidden" role="status" aria-live="polite"></div>
 
 <script src="{{ url_for('static', filename='js/reader.js') }}" defer></script>

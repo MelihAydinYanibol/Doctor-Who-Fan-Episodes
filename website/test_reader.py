@@ -296,6 +296,24 @@ class RouteTests(unittest.TestCase):
         self.assertIn("/en/read/my-book/chapter-1", body)
         self.assertIn("Alpha", body)
 
+    def test_book_page_offers_a_subscription(self):
+        body = self.client.get("/en/book/my-book").get_data(as_text=True)
+        self.assertIn('id="subscribe-button"', body)
+        self.assertIn('data-book="my-book"', body)
+        # The script needs to know how many chapters exist right now to spot a
+        # new one later.
+        self.assertIn('data-count="2"', body)
+        self.assertIn('data-lang="en"', body)
+        # And the reader is told what the permission is for before it is asked.
+        self.assertIn('id="subscribe-dialog"', body)
+        self.assertIn("new chapter of My Book is published", body)
+        self.assertIn("while the site is open in a tab", body)
+
+    def test_notification_wording_is_translated_and_keeps_placeholders(self):
+        body = self.client.get("/tr/book/my-book").get_data(as_text=True)
+        self.assertIn("Yeni b\\u00f6l\\u00fcm: {title}", body)
+        self.assertIn("Yeni bölümlerden haberdar et", body)
+
     def test_unknown_book_is_a_404(self):
         self.assertEqual(self.client.get("/en/book/no-such-book").status_code, 404)
 

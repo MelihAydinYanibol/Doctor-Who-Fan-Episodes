@@ -426,6 +426,193 @@
     window.dwfeToggleSpeech = function () { listenButton.click(); };
   }
 
+  /* --- new-chapter subscriptions ------------------------------------------- */
+
+  // A subscription is a note in this browser: which books to watch and how
+  // many chapters each had when last seen. Nothing is sent anywhere, so there
+  // is no account to make and nothing to unsubscribe from by email. The cost
+  // is that notifications can only be raised while the site is open — the page
+  // says so before asking for permission, and new chapters are marked here on
+  // the next visit regardless.
+  var SUBS_KEY = 'dwfe:subscriptions';
+  var POLL_MS = 5 * 60 * 1000;
+
+  var phrases = (function () {
+    var node = document.getElementById('dwfe-i18n');
+    try {
+      return node ? JSON.parse(node.textContent) : {};
+    } catch (err) {
+      return {};
+    }
+  })();
+
+  function fill(template, values) {
+    return String(template || '').replace(/\{(\w+)\}/g, function (whole, key) {
+      return values[key] !== undefined ? values[key] : whole;
+    });
+  }
+
+  var subscriptions = readStore(SUBS_KEY, {});
+
+  function saveSubscriptions() { writeStore(SUBS_KEY, subscriptions); }
+
+  function canNotify() {
+    return typeof window.Notification === 'function';
+  }
+
+  function raiseNotification(book, chapters, added) {
+    if (!canNotify() || window.Notification.permission !== 'granted') return;
+    var latest = chapters[chapters.length - 1];
+    var title = added === 1
+      ? fill(phrases.one, { title: latest.title })
+      : fill(phrases.many, { count: added });
+    try {
+      var note = new window.Notification(title, {
+        body: fill(phrases.body, { book: book.title }),
+        icon: '/static/img/favicon.svg',
+        tag: 'dwfe-' + book.slug          // one book, one notification
+      });
+      note.onclick = function () {
+        window.focus();
+        window.location.href = latest.url;
+      };
+    } catch (err) { /* a browser may refuse outside a user gesture */ }
+  }
+
+  var banner = document.getElementById('new-chapters');
+
+  function showBanner(added, latest) {
+    if (!banner) return;
+    banner.querySelector('[data-new-chapters-text]').textContent = added === 1
+      ? phrases.bannerOne
+      : fill(phrases.bannerMany, { count: added });
+    banner.querySelector('[data-new-chapters-link]').href = latest.url;
+    banner.hidden = false;
+  }
+
+  if (banner) {
+    banner.querySelector('[data-new-chapters-dismiss]').addEventListener('click', function () {
+      banner.hidden = true;
+    });
+  }
+
+  var subscribeButton = document.querySelector('[data-subscribe]');
+  var subscribeDialog = document.getElementById('subscribe-dialog');
+
+  function paintSubscribeButton() {
+    if (!subscribeButton) return;
+    var slug = subscribeButton.getAttribute('data-book');
+    var on = Boolean(subscriptions[slug]);
+    subscribeButton.setAttribute('aria-pressed', on ? 'true' : 'false');
+    subscribeButton.classList.toggle('is-subscribed', on);
+    subscribeButton.querySelector('[data-subscribe-label]').textContent =
+      subscribeButton.getAttribute(on ? 'data-label-off' : 'data-label-on');
+    subscribeButton.hidden = false;   // only offered where the script runs
+  }
+
+  function subscribe() {
+    var slug = subscribeButton.getAttribute('data-book');
+    var title = subscribeButton.getAttribute('data-book-title');
+    subscriptions[slug] = {
+      lang: subscribeButton.getAttribute('data-lang'),
+      count: parseInt(subscribeButton.getAttribute('data-count'), 10) || 0,
+      title: title,
+      at: Date.now()
+    };
+    saveSubscriptions();
+    paintSubscribeButton();
+
+    if (!canNotify()) {
+      announce(phrases.unsupported);
+    } else if (window.Notification.permission === 'denied') {
+      announce(phrases.blocked);
+    } else {
+      announce(fill(phrases.subscribed, { book: title }));
+    }
+  }
+
+  if (subscribeButton) {
+    paintSubscribeButton();
+
+    subscribeButton.addEventListener('click', function () {
+      var slug = subscribeButton.getAttribute('data-book');
+      if (subscriptions[slug]) {
+        var title = subscriptions[slug].title;
+        delete subscriptions[slug];
+        saveSubscriptions();
+        paintSubscribeButton();
+        announce(fill(phrases.unsubscribed, { book: title }));
+        return;
+      }
+
+      // Explain what the browser is about to ask before it asks.
+      if (canNotify() && window.Notification.permission === 'default' && subscribeDialog) {
+        if (typeof subscribeDialog.showModal === 'function') {
+          subscribeDialog.showModal();
+        } else {
+          subscribeDialog.setAttribute('open', '');
+        }
+        return;
+      }
+      subscribe();
+    });
+  }
+
+  if (subscribeDialog) {
+    var confirmButton = subscribeDialog.querySelector('[data-subscribe-confirm]');
+    if (confirmButton) {
+      confirmButton.addEventListener('click', function () {
+        subscribeDialog.close();
+        try {
+          var asked = window.Notification.requestPermission();
+          if (asked && typeof asked.then === 'function') {
+            asked.then(subscribe, subscribe);
+          } else {
+            subscribe();
+          }
+        } catch (err) {
+          subscribe();
+        }
+      });
+    }
+  }
+
+  function checkSubscriptions() {
+    var slugs = Object.keys(subscriptions);
+    if (!slugs.length || !window.fetch) return;
+
+    fetch('/api/library', { headers: { Accept: 'application/json' } })
+      .then(function (response) { return response.json(); })
+      .then(function (payload) {
+        var changed = false;
+        (payload.books || []).forEach(function (book) {
+          var sub = subscriptions[book.slug];
+          if (!sub) return;
+          var chapters = book.editions[sub.lang] || book.editions[Object.keys(book.editions)[0]];
+          if (!chapters) return;
+
+          var added = chapters.length - sub.count;
+          if (added > 0) {
+            raiseNotification(book, chapters, added);
+            if (subscribeButton && subscribeButton.getAttribute('data-book') === book.slug) {
+              showBanner(added, chapters[chapters.length - 1]);
+            }
+            sub.count = chapters.length;
+            changed = true;
+          } else if (added < 0) {
+            sub.count = chapters.length;   // a chapter was withdrawn
+            changed = true;
+          }
+        });
+        if (changed) saveSubscriptions();
+      })
+      .catch(function () { /* offline: try again on the next tick */ });
+  }
+
+  checkSubscriptions();
+  window.addEventListener('focus', checkSubscriptions);
+  window.setInterval(checkSubscriptions, POLL_MS);
+
   /* --- keyboard shortcuts -------------------------------------------------- */
 
   function isTypingTarget(target) {

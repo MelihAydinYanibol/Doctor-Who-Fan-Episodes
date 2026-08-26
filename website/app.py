@@ -136,6 +136,20 @@ def create_app() -> Flask:
             # and no ?lang= on the link they followed. Every response sets the
             # cookie, so the picker is offered once and never nags again.
             "first_visit": LANG_COOKIE not in request.cookies and not request.args.get("lang"),
+            # Handed to the browser as JSON: notifications are composed in the
+            # page, but the wording has to come from here to stay translated.
+            # Fetched without kwargs so the {placeholders} survive for JS.
+            "notification_strings": {
+                "one": translate("notification_title"),
+                "many": translate("notification_title_many"),
+                "body": translate("notification_body"),
+                "bannerOne": translate("new_chapters_one"),
+                "bannerMany": translate("new_chapters_many"),
+                "subscribed": translate("subscribe_done"),
+                "unsubscribed": translate("unsubscribe_done"),
+                "blocked": translate("subscribe_blocked"),
+                "unsupported": translate("subscribe_unsupported"),
+            },
         }
 
     def language_variants(book_slug: str | None, chapter_slug: str | None) -> list[dict]:

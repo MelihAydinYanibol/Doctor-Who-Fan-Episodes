@@ -1000,3 +1000,32 @@ kbd {
   font-size: .84rem;
   color: var(--ink-faint);
 }
+
+/* --- new-chapter subscriptions -------------------------------------------- */
+
+.ghost-button.is-subscribed {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.book-hero.has-cover .ghost-button.is-subscribed {
+  background: rgba(255, 255, 255, .16);
+  border-color: #fff;
+  color: #fff;
+}
+
+.new-chapters {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  flex-wrap: wrap;
+  margin: 1.6rem 0 0;
+  padding: .8rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+.new-chapters-text { flex: 1; min-width: 12rem; font-weight: 600; }
+.primary-button.small { padding: .4rem .8rem; font-size: .84rem; }
+
+.subscribe-caveat { margin-bottom: 1.2rem; }

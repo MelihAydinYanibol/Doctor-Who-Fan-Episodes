@@ -162,6 +162,19 @@ preferences.
   when scripting is available. It is skipped when the link already names a
   language (`?lang=`), when a choice is already stored, and when the library
   only has one language.
+* **New-chapter subscriptions** — the book page has a "Notify me about new
+  chapters" button. Before the browser's permission prompt appears, the site
+  explains what the permission is for and what it cannot do, and the same
+  button unsubscribes. A subscription is a note in `localStorage` — which books
+  to watch and how many chapters each had — so there is no account, no email
+  address and nothing sent anywhere.
+
+  The honest limit: with no server-side push, notifications can only be raised
+  while the site is open in a tab. The page checks `/api/library` on load, when
+  the tab regains focus, and every five minutes. New chapters are also marked
+  on the book page when the reader returns, so a blocked or unsupported
+  permission still leaves the feature useful. Real background push would need a
+  service worker, VAPID keys and a stored subscription list on the server.
 * **Progress** — a progress bar, per-chapter position saved locally, a
   "Continue reading" card on the shelf, a progress bar on each book card and a
   percentage badge on chapters already started. Progress is tracked per
