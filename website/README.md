@@ -42,12 +42,29 @@ of `.jpg`, `.png`, `.webp`, `.avif`, `.gif`, `.svg`) in a book's folder and it
 becomes that book's banner on the shelf and the backdrop of its book page.
 Landscape art works best — the card crops to 16:9.
 
+**Several banners, one drawn per run.** Number them — `banner1.png`,
+`banner2.png`, `banner3.png` — and the site picks one when the process starts
+and keeps it until the process stops. The artwork holds still while people
+read, the shelf card matches the book page, and restarting the server draws
+again. `banner.png` with no number belongs to the same set, and `banner-2` /
+`banner_3` work too. Only numbered (or plain) names take part:
+`banner-wide.png` is one particular picture, not a variant of
+`banner-tall.png`, so a name like that is never drawn against another.
+
+If the chosen file disappears from the repository, the next request draws from
+what is left rather than pointing at a missing image.
+
+Each variant is served at its own URL (`?v=banner2.png`) so browsers cache them
+apart. Without that, a restart that settles on a different banner would still
+show returning readers the one their browser cached — covers are cacheable for
+an hour.
+
 A book with no image is not left blank: the site generates a banner from the
 title itself, on a colour derived from the book's name, so every book on the
 shelf looks deliberate from the first commit. If only one language edition has
 artwork, the other editions borrow it.
 
-Banners are served through `/cover/<book>/<lang>` from whichever source the
+Banners are served through `/cover/<book>/<lang>?v=<file>` from whichever source the
 library came from — so a GitHub-backed deployment picks up new artwork the same
 way it picks up new chapters — and carry an ETag so browsers re-download them
 only when the file actually changes.
