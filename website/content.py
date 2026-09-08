@@ -208,22 +208,63 @@ def parse_chapter_name(file_name: str) -> tuple[int | None, str]:
     return None, stem
 
 
-def find_cover(entries: Iterable[FileEntry]) -> FileEntry | None:
-    """Pick the banner image out of a book folder, if it has one."""
+def _cover_rank(stem: str) -> tuple[int, int, int] | None:
+    """Score a file stem as banner artwork: ``(word, tier, index)`` or None.
+
+    ``word`` is the position in COVER_NAMES, so banner beats cover beats
+    poster. ``tier`` separates a plain or numbered name (``banner``,
+    ``banner2``) from any other suffix (``banner-wide``), because only the
+    former are treated as interchangeable variants of one another. ``index``
+    orders the numbered ones.
+    """
+    key = _strip_accents(stem).lower().strip(" -_")
+    for word, name in enumerate(COVER_NAMES):
+        base = _strip_accents(name).lower()
+        if key == base:
+            return (word, 0, 0)
+        numbered = re.fullmatch(re.escape(base) + r"[ \-_]?0*(\d+)", key)
+        if numbered:
+            return (word, 0, int(numbered.group(1)))
+        if key.startswith(base):
+            return (word, 1, 0)
+    return None
+
+
+def find_covers(entries: Iterable[FileEntry]) -> list[FileEntry]:
+    """All interchangeable banners for a book, best first.
+
+    A folder holding ``banner1.png`` and ``banner2.png`` gets both, and the
+    page picks one per visit. Anything else resolves to a single file, so a
+    folder with one banner behaves exactly as before.
+    """
     candidates = []
     for entry in entries:
         stem, extension = _split_extension(entry.name)
         if extension not in IMAGE_EXTENSIONS:
             continue
-        key = _strip_accents(stem).lower().strip(" -_")
-        for rank, name in enumerate(COVER_NAMES):
-            if key == _strip_accents(name).lower() or key.startswith(_strip_accents(name).lower()):
-                candidates.append((rank, entry.name, entry))
-                break
+        score = _cover_rank(stem)
+        if score is not None:
+            candidates.append((score, entry.name, entry))
     if not candidates:
-        return None
-    candidates.sort(key=lambda item: (item[0], item[1]))
-    return candidates[0][2]
+        return []
+
+    candidates.sort(key=lambda item: (item[0][0], item[0][1], item[0][2], item[1]))
+    best_word, best_tier = candidates[0][0][0], candidates[0][0][1]
+
+    group = [
+        entry
+        for (score, _name, entry) in candidates
+        if score[0] == best_word and score[1] == best_tier
+    ]
+    # Only plain and numbered names rotate; "banner-wide" is one specific
+    # picture, not a variant of "banner-tall".
+    return group if best_tier == 0 else group[:1]
+
+
+def find_cover(entries: Iterable[FileEntry]) -> FileEntry | None:
+    """The single best banner, when only one is needed."""
+    covers = find_covers(entries)
+    return covers[0] if covers else None
 
 
 def content_type_for(name: str) -> str:
@@ -497,7 +538,17 @@ class Edition:
     language: str
     folder: str
     chapters: list[Chapter] = field(default_factory=list)
-    cover: FileEntry | None = None
+    covers: list[FileEntry] = field(default_factory=list)
+
+    @property
+    def cover(self) -> FileEntry | None:
+        return self.covers[0] if self.covers else None
+
+    def cover_named(self, name: str) -> FileEntry | None:
+        for entry in self.covers:
+            if entry.name == name:
+                return entry
+        return None
 
     def by_slug(self, slug: str) -> Chapter | None:
         for chapter in self.chapters:
@@ -519,16 +570,21 @@ class Book:
     def edition(self, language: str) -> Edition | None:
         return self.editions.get(language)
 
-    def cover_for(self, language: str) -> tuple[str, FileEntry] | None:
-        """The banner to show for a language, falling back to another edition's."""
+    def covers_for(self, language: str) -> tuple[str, list[FileEntry]] | None:
+        """Every banner to choose from, falling back to another edition's."""
         edition = self.editions.get(language)
-        if edition and edition.cover:
-            return language, edition.cover
+        if edition and edition.covers:
+            return language, edition.covers
         for code in self.languages:
             other = self.editions[code]
-            if other.cover:
-                return code, other.cover
+            if other.covers:
+                return code, other.covers
         return None
+
+    def cover_for(self, language: str) -> tuple[str, FileEntry] | None:
+        """The first banner for a language — used where only one is wanted."""
+        found = self.covers_for(language)
+        return (found[0], found[1][0]) if found else None
 
     @property
     def hue(self) -> int:
@@ -728,7 +784,7 @@ class ContentService:
 
             parsed.sort(key=lambda item: (item[0] is None, item[0] or 0, item[2].name))
 
-            edition = Edition(language=language, folder=folder_name, cover=find_cover(entries))
+            edition = Edition(language=language, folder=folder_name, covers=find_covers(entries))
             for index, (number, title, entry) in enumerate(parsed, start=1):
                 effective = number if number is not None else index
                 # Slugs are numeric so the same chapter has the same URL in

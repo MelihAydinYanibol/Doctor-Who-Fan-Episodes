@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import os
+import random
 
 from flask import (
     Flask,
@@ -224,6 +225,21 @@ def create_app() -> Flask:
         # lands on. The rendered page sets it.
         return redirect(url_for("index", lang=pick_language()))
 
+    def cover_url(book, language: str) -> str | None:
+        """A URL for one of this book's banners, chosen fresh each request.
+
+        The file name rides along in the query string so each variant is a
+        distinct, separately cacheable URL — without it the browser would keep
+        serving the first banner it cached and a refresh would never change
+        the picture.
+        """
+        found = book.covers_for(language)
+        if not found:
+            return None
+        code, covers = found
+        chosen = random.choice(covers) if len(covers) > 1 else covers[0]
+        return url_for("cover", book_slug=book.slug, lang=code, v=chosen.name)
+
     def shelf_entry(book, language: str) -> dict | None:
         """Everything the library grid needs for one book."""
         edition = book.edition(language) or (
@@ -231,13 +247,12 @@ def create_app() -> Flask:
         )
         if edition is None:
             return None
-        cover = book.cover_for(language)
         return {
             "book": book,
             "edition": edition,
             "chapters": len(edition.chapters),
             "first": edition.chapters[0] if edition.chapters else None,
-            "cover_url": url_for("cover", book_slug=book.slug, lang=cover[0]) if cover else None,
+            "cover_url": cover_url(book, language),
             "translated": edition.language == language,
             "languages": book.languages,
         }
@@ -266,12 +281,11 @@ def create_app() -> Flask:
         )
         if edition is None:
             abort(404)
-        cover = book.cover_for(lang)
         context = base_context(lang)
         context.update(
             book=book,
             edition=edition,
-            cover_url=url_for("cover", book_slug=book.slug, lang=cover[0]) if cover else None,
+            cover_url=cover_url(book, lang),
             language_variants=language_variants(book_slug, None),
         )
         response = make_response(render_template("book.html", **context))
@@ -283,9 +297,13 @@ def create_app() -> Flask:
         library = service.library()
         book = library.book(book_slug)
         edition = book.edition(lang) if book else None
-        entry = edition.cover if edition else None
-        if entry is None:
+        if edition is None or not edition.covers:
             abort(404)
+
+        # ?v= names which variant the page chose. An unknown or missing name
+        # still serves artwork rather than a broken image.
+        wanted = request.args.get("v")
+        entry = (edition.cover_named(wanted) if wanted else None) or random.choice(edition.covers)
 
         etag = f'"{entry.sha}"'
         if request.headers.get("If-None-Match") == etag:
@@ -384,11 +402,11 @@ def create_app() -> Flask:
                     {
                         "slug": book.slug,
                         "title": book.title,
-                        "cover": (
-                            url_for("cover", book_slug=book.slug, lang=book.cover_for(book.languages[0])[0])
-                            if book.languages and book.cover_for(book.languages[0])
-                            else None
-                        ),
+                        "covers": [
+                            url_for("cover", book_slug=book.slug, lang=code, v=entry.name)
+                            for code, entries in ([book.covers_for(book.languages[0])] if book.languages and book.covers_for(book.languages[0]) else [])
+                            for entry in entries
+                        ],
                         "editions": {
                             code: [
                                 {

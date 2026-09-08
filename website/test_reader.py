@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -123,6 +124,29 @@ class ParsingTests(unittest.TestCase):
     def test_ragged_table_rows_do_not_lose_cells(self):
         html = render_document("| a | b | c |\n| --- | --- | --- |\n| 1 | 2 |\n", "README.md")
         self.assertEqual(html.count("<td"), 3)
+
+    def test_numbered_banners_are_variants_of_one_another(self):
+        from content import FileEntry, find_covers
+
+        def entry(name):
+            return FileEntry(name=name, path=name, sha="x")
+
+        def names(files):
+            return [c.name for c in find_covers([entry(f) for f in files])]
+
+        # The whole point: several numbered banners are kept, in numeric order.
+        self.assertEqual(names(["banner2.png", "banner1.png"]), ["banner1.png", "banner2.png"])
+        self.assertEqual(names(["banner10.png", "banner2.png"]), ["banner2.png", "banner10.png"])
+        self.assertEqual(names(["banner-2.png", "banner_3.png"]), ["banner-2.png", "banner_3.png"])
+        # An unnumbered file belongs to the same set.
+        self.assertEqual(names(["banner.png", "banner2.png"]), ["banner.png", "banner2.png"])
+        # A different word is not a variant, and does not dilute the set.
+        self.assertEqual(names(["banner1.png", "cover1.png"]), ["banner1.png"])
+        # "banner-wide" is one particular picture, not a numbered variant, so
+        # it never joins a rotation and never beats one.
+        self.assertEqual(names(["banner-wide.png", "banner-tall.png"]), ["banner-tall.png"])
+        self.assertEqual(names(["banner1.png", "banner-wide.png"]), ["banner1.png"])
+        self.assertEqual(names(["banner.png"]), ["banner.png"])
 
     def test_find_cover_prefers_banner_and_ignores_prose(self):
         from content import FileEntry
@@ -350,6 +374,44 @@ class RouteTests(unittest.TestCase):
         response = self.client.get("/en/read/my-book/chapter-1")
         self.assertEqual(response.status_code, 200)
         self.assertIn("First paragraph.", response.get_data(as_text=True))
+
+    def test_a_page_picks_among_the_banner_variants(self):
+        folder = os.path.join(self.root, "My Book")
+        gif = open(os.path.join(folder, "banner.gif"), "rb").read()
+        os.remove(os.path.join(folder, "banner.gif"))
+        for name in ("banner1.gif", "banner2.gif", "banner3.gif"):
+            with open(os.path.join(folder, name), "wb") as handle:
+                handle.write(gif)
+
+        seen = set()
+        for _ in range(60):
+            body = self.client.get("/en/book/my-book").get_data(as_text=True)
+            match = re.search(r'/cover/my-book/en\?v=(banner\d\.gif)', body)
+            self.assertIsNotNone(match, "the page should name the variant it chose")
+            seen.add(match.group(1))
+        self.assertEqual(seen, {"banner1.gif", "banner2.gif", "banner3.gif"})
+
+    def test_each_variant_is_served_at_its_own_url(self):
+        folder = os.path.join(self.root, "My Book")
+        gif = open(os.path.join(folder, "banner.gif"), "rb").read()
+        for name in ("banner1.gif", "banner2.gif"):
+            with open(os.path.join(folder, name), "wb") as handle:
+                handle.write(gif + b"\x00" * (1 if name.endswith("1.gif") else 2))
+        os.remove(os.path.join(folder, "banner.gif"))
+
+        first = self.client.get("/cover/my-book/en?v=banner1.gif")
+        second = self.client.get("/cover/my-book/en?v=banner2.gif")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        # Different bytes behind different URLs, so a browser caches them apart
+        # instead of pinning the first banner it saw.
+        self.assertNotEqual(first.get_data(), second.get_data())
+        self.assertNotEqual(first.headers["ETag"], second.headers["ETag"])
+
+    def test_an_unknown_variant_still_serves_artwork(self):
+        response = self.client.get("/cover/my-book/en?v=nope.png")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "image/gif")
 
     def test_cover_is_served_with_an_etag(self):
         response = self.client.get("/cover/my-book/en")
