@@ -225,20 +225,33 @@ def create_app() -> Flask:
         # lands on. The rendered page sets it.
         return redirect(url_for("index", lang=pick_language()))
 
-    def cover_url(book, language: str) -> str | None:
-        """A URL for one of this book's banners, chosen fresh each request.
+    # One banner per book, drawn when the process starts and kept until it
+    # stops. Keyed by book and language, and re-drawn if the files on disk
+    # change underneath us. Restarting the server rolls again.
+    chosen_art: dict[tuple[str, str], str] = {}
 
-        The file name rides along in the query string so each variant is a
-        distinct, separately cacheable URL — without it the browser would keep
-        serving the first banner it cached and a refresh would never change
-        the picture.
+    def chosen_cover(book, code: str, covers: list) -> object:
+        if len(covers) == 1:
+            return covers[0]
+        names = [entry.name for entry in covers]
+        remembered = chosen_art.get((book.slug, code))
+        if remembered not in names:
+            remembered = chosen_art[(book.slug, code)] = random.choice(names)
+        return covers[names.index(remembered)]
+
+    def cover_url(book, language: str) -> str | None:
+        """A URL for this book's banner, fixed for the life of the process.
+
+        With several numbered banners one is drawn at startup and kept, so the
+        artwork holds still while people read and the shelf card matches the
+        book page. The file name rides along in the query string so each
+        variant is a distinct, separately cacheable URL.
         """
         found = book.covers_for(language)
         if not found:
             return None
         code, covers = found
-        chosen = random.choice(covers) if len(covers) > 1 else covers[0]
-        return url_for("cover", book_slug=book.slug, lang=code, v=chosen.name)
+        return url_for("cover", book_slug=book.slug, lang=code, v=chosen_cover(book, code, covers).name)
 
     def shelf_entry(book, language: str) -> dict | None:
         """Everything the library grid needs for one book."""
@@ -303,7 +316,7 @@ def create_app() -> Flask:
         # ?v= names which variant the page chose. An unknown or missing name
         # still serves artwork rather than a broken image.
         wanted = request.args.get("v")
-        entry = (edition.cover_named(wanted) if wanted else None) or random.choice(edition.covers)
+        entry = (edition.cover_named(wanted) if wanted else None) or chosen_cover(book, lang, edition.covers)
 
         etag = f'"{entry.sha}"'
         if request.headers.get("If-None-Match") == etag:

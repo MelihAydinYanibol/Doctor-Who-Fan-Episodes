@@ -375,7 +375,7 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("First paragraph.", response.get_data(as_text=True))
 
-    def test_a_page_picks_among_the_banner_variants(self):
+    def _make_variants(self):
         folder = os.path.join(self.root, "My Book")
         gif = open(os.path.join(folder, "banner.gif"), "rb").read()
         os.remove(os.path.join(folder, "banner.gif"))
@@ -383,13 +383,42 @@ class RouteTests(unittest.TestCase):
             with open(os.path.join(folder, name), "wb") as handle:
                 handle.write(gif)
 
-        seen = set()
-        for _ in range(60):
-            body = self.client.get("/en/book/my-book").get_data(as_text=True)
-            match = re.search(r'/cover/my-book/en\?v=(banner\d\.gif)', body)
-            self.assertIsNotNone(match, "the page should name the variant it chose")
-            seen.add(match.group(1))
+    @staticmethod
+    def _chosen(client, path="/en/book/my-book"):
+        body = client.get(path).get_data(as_text=True)
+        match = re.search(r"/cover/my-book/en\?v=(banner\d\.gif)", body)
+        return match.group(1) if match else None
+
+    def test_a_banner_holds_still_while_the_server_runs(self):
+        self._make_variants()
+        first = self._chosen(self.client)
+        self.assertIsNotNone(first, "the page should name the variant it chose")
+        # Reloading must not reshuffle the artwork...
+        for _ in range(20):
+            self.assertEqual(self._chosen(self.client), first)
+        # ...it is the same for a different visitor of the same server...
+        other = create_app().test_client()  # a separate client, same process
+        self.assertEqual(self._chosen(self.client), first)
+        # ...and the shelf card agrees with the book page.
+        self.assertEqual(self._chosen(self.client, "/en/"), first)
+        self.assertIsNotNone(self._chosen(other))
+
+    def test_restarting_the_server_draws_again(self):
+        self._make_variants()
+        # Each create_app() stands in for a fresh run of the program.
+        seen = {self._chosen(create_app().test_client()) for _ in range(60)}
         self.assertEqual(seen, {"banner1.gif", "banner2.gif", "banner3.gif"})
+
+    def test_a_withdrawn_banner_is_not_served_forever(self):
+        self._make_variants()
+        picked = self._chosen(self.client)
+        os.remove(os.path.join(self.root, "My Book", picked))
+        # The remembered choice is gone from disk, so another is drawn rather
+        # than the page pointing at a file that no longer exists.
+        replacement = self._chosen(self.client)
+        self.assertNotEqual(replacement, picked)
+        self.assertEqual(self.client.get("/en/book/my-book").status_code, 200)
+        self.assertEqual(self.client.get("/cover/my-book/en?v=" + replacement).status_code, 200)
 
     def test_each_variant_is_served_at_its_own_url(self):
         folder = os.path.join(self.root, "My Book")
