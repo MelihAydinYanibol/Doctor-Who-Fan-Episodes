@@ -532,6 +532,12 @@ class Chapter:
     def label_key(self) -> str:
         return "chapter_number"
 
+    @property
+    def is_prelude(self) -> bool:
+        """Chapter 0 is a reader's primer, not part of the story, so it is
+        shown by its title alone, without a chapter number."""
+        return self.number == 0
+
 
 @dataclass
 class Edition:
