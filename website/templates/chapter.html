@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ t('chapter_number', number=chapter.number or position) }} — {{ chapter.title }} · {{ book.title }}{% endblock %}
+{% block title %}{{ t('chapter_number', number=(chapter.number if chapter.number is not none else position)) }} — {{ chapter.title }} · {{ book.title }}{% endblock %}
 {% block description %}{{ chapter.title }} — {{ book.title }}. {{ t('disclaimer_short') }}{% endblock %}
 
 {% block content %}
@@ -11,7 +11,7 @@
     </nav>
 
     <header class="chapter-head">
-      <p class="eyebrow">{{ t('chapter_number', number=chapter.number or position) }} · {{ position }}/{{ total }}</p>
+      <p class="eyebrow">{{ t('chapter_number', number=(chapter.number if chapter.number is not none else position)) }} · {{ position }}/{{ total }}</p>
       <h1>{{ chapter.title }}</h1>
       <p class="chapter-meta">
         <span>{{ t('reading_time', minutes=minutes) }}</span>
