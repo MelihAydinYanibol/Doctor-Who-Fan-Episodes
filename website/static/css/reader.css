@@ -393,6 +393,7 @@ main:focus { outline: none; }
   opacity: .75;
   font-variant-numeric: tabular-nums;
 }
+.chapter-index.is-prelude { min-width: 2ch; text-align: center; }
 .chapter-body { display: grid; gap: .15rem; min-width: 0; }
 .chapter-eyebrow { font-size: .74rem; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
 .chapter-title { font-family: var(--font-reader); font-size: 1.2rem; }
@@ -1032,7 +1033,7 @@ kbd {
 
 /* A resumed chapter title can be long; keep the button to one line. */
 #resume-link {
-  max-width: min(100%, 24rem);
+  max-width: min(100%, 30rem);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

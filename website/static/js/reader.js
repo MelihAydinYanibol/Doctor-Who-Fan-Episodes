@@ -306,9 +306,10 @@
       resumeLink.title = newest.title;
       // "Continue reading — Chapter 2" reads quicker than the chapter's name,
       // and keeps the button to a predictable width. The number comes from the
-      // slug, so positions saved before this existed still work.
+      // slug, so positions saved before this existed still work. Chapter 0 is
+      // the unnumbered primer, so it goes by its title like any other.
       var numbered = /(?:^|\/)chapter-(\d+)$/.exec(newest.key || '');
-      var where = numbered
+      var where = numbered && Number(numbered[1]) !== 0
         ? fill(phrases.chapterNumber, { number: numbered[1] })
         : newest.title;
       resumeLink.textContent = resumeLink.textContent.trim() + ' — ' + where;

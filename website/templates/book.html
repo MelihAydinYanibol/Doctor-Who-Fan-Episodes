@@ -115,9 +115,14 @@
     <li>
       <a class="chapter-card" href="{{ url_for('chapter', lang=edition.language, book_slug=book.slug, chapter_slug=chapter.slug) }}"
          data-chapter-slug="{{ chapter.slug }}">
+        {% if chapter.is_prelude %}
+        <span class="chapter-index is-prelude" aria-hidden="true">✦</span>
+        <span class="chapter-body">
+        {% else %}
         <span class="chapter-index" aria-hidden="true">{{ '%02d'|format((chapter.number if chapter.number is not none else loop.index)) }}</span>
         <span class="chapter-body">
           <span class="chapter-eyebrow">{{ t('chapter_number', number=(chapter.number if chapter.number is not none else loop.index)) }}</span>
+        {% endif %}
           <span class="chapter-title">{{ chapter.title }}</span>
           <span class="chapter-resume" data-resume-badge hidden></span>
         </span>
