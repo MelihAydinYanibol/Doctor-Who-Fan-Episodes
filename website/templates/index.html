@@ -59,7 +59,7 @@
           </span>
           {% if item.first %}
           <span class="book-first" lang="{{ item.edition.language }}">
-            {{ t('chapter_number', number=item.first.number or 1) }} · {{ item.first.title }}
+            {{ t('chapter_number', number=(item.first.number if item.first.number is not none else 1)) }} · {{ item.first.title }}
           </span>
           {% endif %}
           <span class="book-progress" data-book-progress hidden>
