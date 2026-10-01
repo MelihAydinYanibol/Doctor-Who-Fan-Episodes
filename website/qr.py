@@ -1,6 +1,6 @@
 """QR codes for the sync links: segno when installed, a built-in encoder if not.
 
-``qr_svg`` uses segno (``pip install segno``) when it is importable, and falls
+``qr_svg`` uses segno (listed in requirements.txt) when it is importable, and falls
 back to the small encoder below when it is missing or fails, so a QR code is
 never blank for want of an optional package.
 
