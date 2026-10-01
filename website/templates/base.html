@@ -74,6 +74,14 @@
       </div>
       {% endif %}
 
+      {# Sync needs the script, so the button only appears where it runs. #}
+      <button type="button" class="settings-button sync-button" data-open-sync aria-haspopup="dialog"
+              aria-label="{{ t('sync_title') }}" hidden>
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 4a8 8 0 0 0-7.4 5H2l3.5 4L9 9H6.8A6 6 0 0 1 18 10h2a8 8 0 0 0-8-6Zm6.5 7L15 15h2.2A6 6 0 0 1 6 14H4a8 8 0 0 0 15.4 1H22l-3.5-4Z"/></svg>
+        <span>{{ t('sync_button') }}</span>
+        <span class="sync-dot" data-sync-dot hidden aria-hidden="true"></span>
+      </button>
+
       {# The label is hidden on narrow screens, so name the button explicitly. #}
       <button type="button" class="settings-button" data-open-settings aria-haspopup="dialog"
               aria-label="{{ t('nav_settings') }}">
@@ -218,6 +226,71 @@
       <button class="primary-button" value="close">{{ t('close') }}</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="sync-dialog" class="language-dialog sync-dialog" aria-labelledby="sync-dialog-title">
+  <div class="language-dialog-head">
+    <h2 id="sync-dialog-title">{{ t('sync_title') }}</h2>
+    <form method="dialog">
+      <button class="icon-button" value="close" aria-label="{{ t('close') }}">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="m12 10.6 5-5 1.4 1.4-5 5 5 5-1.4 1.4-5-5-5 5-1.4-1.4 5-5-5-5L7 5.6Z"/></svg>
+      </button>
+    </form>
+  </div>
+
+  {# Step 1: not synced yet — make a code or use one. #}
+  <div class="sync-step" data-sync-step="choose">
+    <p class="language-dialog-body">{{ t('sync_intro') }}</p>
+    <div class="sync-choices">
+      <button type="button" class="primary-button" data-sync-create>{{ t('sync_create') }}</button>
+      <p class="sync-choice-hint">{{ t('sync_create_hint') }}</p>
+      <button type="button" class="ghost-button" data-sync-show="enter">{{ t('sync_enter') }}</button>
+      <p class="sync-choice-hint">{{ t('sync_enter_hint') }}</p>
+    </div>
+  </div>
+
+  {# Step 2: type the code, or scan the QR code shown on the other device. #}
+  <div class="sync-step" data-sync-step="enter" hidden>
+    <form class="sync-enter-form" data-sync-enter-form novalidate>
+      <label for="sync-code-input">{{ t('sync_code_label') }}</label>
+      <div class="sync-enter-row">
+        <input id="sync-code-input" class="sync-code-input" type="text" inputmode="numeric"
+               autocomplete="one-time-code" maxlength="9" placeholder="1234 5678"
+               aria-describedby="sync-enter-error" data-sync-code-input>
+        <button type="submit" class="primary-button">{{ t('sync_connect') }}</button>
+      </div>
+      <p id="sync-enter-error" class="sync-error" data-sync-error role="alert"></p>
+    </form>
+
+    <button type="button" class="ghost-button sync-scan-button" data-sync-scan hidden
+            data-label-stop="{{ t('sync_scan_stop') }}">{{ t('sync_scan') }}</button>
+    <div class="sync-scanner" data-sync-scanner hidden>
+      <video data-sync-video playsinline muted></video>
+    </div>
+    <p class="language-note">{{ t('sync_scan_hint') }}</p>
+
+    <div class="settings-actions">
+      <button type="button" class="ghost-button" data-sync-show="choose">{{ t('sync_back') }}</button>
+    </div>
+  </div>
+
+  {# Step 3: synced — show the code and its QR for the next device. #}
+  <div class="sync-step" data-sync-step="linked" hidden>
+    <p class="sync-label">{{ t('sync_your_code') }}</p>
+    <p class="sync-code" data-sync-code dir="ltr"></p>
+    <img class="sync-qr" data-sync-qr width="240" height="240" alt=""
+         data-alt-template="{{ t('sync_qr_alt') }}">
+    <p class="language-dialog-body">{{ t('sync_share_hint') }}</p>
+    <p class="sync-status" data-sync-status></p>
+    <div class="sync-actions">
+      <button type="button" class="primary-button" data-sync-now>{{ t('sync_now') }}</button>
+      <button type="button" class="ghost-button" data-sync-copy data-label-done="{{ t('sync_copied') }}">{{ t('sync_copy') }}</button>
+    </div>
+    <p class="language-note">{{ t('sync_secret_note') }}</p>
+    <div class="settings-actions">
+      <button type="button" class="ghost-button" data-sync-disconnect>{{ t('sync_disconnect') }}</button>
+    </div>
+  </div>
 </dialog>
 
 {% if first_visit and languages|length > 1 %}

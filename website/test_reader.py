@@ -27,6 +27,7 @@ from content import (
     slugify,
 )
 from markdown_lite import render_document
+from sync import SyncStore, clean_progress, merge, normalise_code
 
 
 def build_fixture(root: str) -> None:
@@ -319,12 +320,17 @@ class RouteTests(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
         build_fixture(self.root)
-        os.environ.update(DWFE_SOURCE="local", DWFE_CONTENT_ROOT=self.root, DWFE_CACHE_TTL="0")
+        os.environ.update(
+            DWFE_SOURCE="local",
+            DWFE_CONTENT_ROOT=self.root,
+            DWFE_CACHE_TTL="0",
+            DWFE_SYNC_DB=os.path.join(self.root, "sync", "sync.sqlite3"),
+        )
         self.client = create_app().test_client()
 
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
-        for key in ("DWFE_SOURCE", "DWFE_CONTENT_ROOT", "DWFE_CACHE_TTL"):
+        for key in ("DWFE_SOURCE", "DWFE_CONTENT_ROOT", "DWFE_CACHE_TTL", "DWFE_SYNC_DB"):
             os.environ.pop(key, None)
 
     def test_root_redirects_to_a_language(self):
@@ -541,6 +547,147 @@ class RouteTests(unittest.TestCase):
             self.assertEqual(ok.status_code, 200)
         finally:
             os.environ.pop("DWFE_REFRESH_TOKEN", None)
+
+
+def _entry(ratio, at, url="/en/read/my-book/chapter-1"):
+    return {"ratio": ratio, "title": "Alpha", "book": "My Book", "url": url, "at": at}
+
+
+class SyncTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        build_fixture(self.root)
+        os.environ.update(
+            DWFE_SOURCE="local",
+            DWFE_CONTENT_ROOT=self.root,
+            DWFE_CACHE_TTL="0",
+            DWFE_SYNC_DB=os.path.join(self.root, "sync.sqlite3"),
+        )
+        self.client = create_app().test_client()
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+        for key in ("DWFE_SOURCE", "DWFE_CONTENT_ROOT", "DWFE_CACHE_TTL", "DWFE_SYNC_DB"):
+            os.environ.pop(key, None)
+
+    def _create(self, client=None):
+        response = (client or self.client).post("/api/sync")
+        self.assertEqual(response.status_code, 201)
+        return response
+
+    def test_codes_are_eight_unique_digits(self):
+        codes = {self._create().get_json()["code"] for _ in range(40)}
+        self.assertEqual(len(codes), 40)
+        for code in codes:
+            self.assertRegex(code, r"^[1-9]\d{7}$")
+
+    def test_creating_a_code_saves_it_in_a_cookie(self):
+        response = self._create()
+        code = response.get_json()["code"]
+        cookie = response.headers.get("Set-Cookie", "")
+        self.assertIn(f"dwfe_sync={code}", cookie)
+        self.assertNotIn("HttpOnly", cookie)  # the page script reads it
+
+    def test_typed_codes_are_normalised(self):
+        self.assertEqual(normalise_code("1234 5678"), "12345678")
+        self.assertEqual(normalise_code("1234-5678"), "12345678")
+        self.assertIsNone(normalise_code("1234567"))
+        self.assertIsNone(normalise_code("abcdefgh"))
+        self.assertIsNone(normalise_code(12345678))
+
+    def test_unknown_and_malformed_codes(self):
+        self.assertEqual(self.client.get("/api/sync/12345678").status_code, 404)
+        self.assertEqual(self.client.post("/api/sync/12345678", json={}).status_code, 404)
+        self.assertEqual(self.client.get("/api/sync/abc").status_code, 404)
+
+    def test_two_devices_converge(self):
+        code = self._create().get_json()["code"]
+        phone = {"en/my-book/chapter-1": _entry(0.6, 2000)}
+        laptop = {
+            "en/my-book/chapter-1": _entry(0.2, 1000),
+            "en/my-book/chapter-2": _entry(0.1, 1500, "/en/read/my-book/chapter-2"),
+        }
+        self.client.post(f"/api/sync/{code}", json={"progress": phone})
+        merged = self.client.post(f"/api/sync/{code}", json={"progress": laptop}).get_json()
+        # The phone read chapter 1 later, so its place wins; chapter 2 joins in.
+        self.assertEqual(merged["progress"]["en/my-book/chapter-1"]["ratio"], 0.6)
+        self.assertIn("en/my-book/chapter-2", merged["progress"])
+        self.assertEqual(self.client.get(f"/api/sync/{code}").get_json()["progress"], merged["progress"])
+
+    def test_newest_settings_win(self):
+        code = self._create().get_json()["code"]
+        self.client.post(f"/api/sync/{code}", json={"settings": {"at": 5, "values": {"theme": "dark"}}})
+        older = {"settings": {"at": 3, "values": {"theme": "light"}}}
+        self.assertEqual(self.client.post(f"/api/sync/{code}", json=older).get_json()["settings"]["values"]["theme"], "dark")
+        newer = {"settings": {"at": 9, "values": {"theme": "sepia", "evil": "<script>"}}}
+        settings = self.client.post(f"/api/sync/{code}", json=newer).get_json()["settings"]
+        self.assertEqual(settings["values"], {"theme": "sepia"})
+
+    def test_junk_progress_is_dropped(self):
+        cleaned = clean_progress(
+            {
+                "ok": _entry(0.5, 1),
+                "offsite": _entry(0.5, 1, "https://evil.example/"),
+                "protocol-relative": _entry(0.5, 1, "//evil.example/"),
+                "no-time": {"ratio": 0.5, "url": "/x"},
+                "bool-time": {"ratio": 0.5, "url": "/x", "at": True},
+                "clamped": _entry(7, 1),
+            }
+        )
+        self.assertEqual(sorted(cleaned), ["clamped", "ok"])
+        self.assertEqual(cleaned["clamped"]["ratio"], 1.0)
+
+    def test_merge_keeps_newest_per_chapter(self):
+        stored = {"progress": {"a": _entry(0.9, 10)}, "settings": None}
+        merged = merge(stored, {"progress": {"a": _entry(0.1, 5), "b": _entry(0.3, 1)}, "settings": None})
+        self.assertEqual(merged["progress"]["a"]["ratio"], 0.9)
+        self.assertEqual(merged["progress"]["b"]["ratio"], 0.3)
+
+    def test_a_beacon_posted_as_plain_text_is_accepted(self):
+        code = self._create().get_json()["code"]
+        body = json.dumps({"progress": {"k": _entry(0.4, 1)}})
+        response = self.client.post(f"/api/sync/{code}", data=body, content_type="text/plain;charset=UTF-8")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("k", response.get_json()["progress"])
+
+    def test_bad_and_oversized_bodies_are_refused(self):
+        code = self._create().get_json()["code"]
+        self.assertEqual(self.client.post(f"/api/sync/{code}", data="not json").status_code, 400)
+        huge = "x" * (300 * 1024)
+        self.assertEqual(self.client.post(f"/api/sync/{code}", data=huge).status_code, 413)
+
+    def test_qr_code_points_at_the_join_link(self):
+        code = self._create().get_json()["code"]
+        response = self.client.get(f"/api/sync/{code}/qr.svg")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "image/svg+xml")
+        self.assertIn(b"<svg", response.data)
+        self.assertEqual(self.client.get("/api/sync/12345678/qr.svg").status_code, 404)
+
+    def test_the_qr_link_joins_this_device(self):
+        code = self._create(create_app().test_client()).get_json()["code"]
+        response = self.client.get(f"/sync/{code}")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("sync=linked", response.headers["Location"])
+        self.assertIn(f"dwfe_sync={code}", response.headers.get("Set-Cookie", ""))
+
+    def test_an_unknown_qr_link_sets_nothing(self):
+        response = self.client.get("/sync/12345678")
+        self.assertIn("sync=unknown", response.headers["Location"])
+        self.assertNotIn("dwfe_sync", response.headers.get("Set-Cookie", ""))
+
+    def test_every_page_offers_sync(self):
+        for path in ("/en/", "/en/book/my-book", "/tr/read/my-book/chapter-1"):
+            body = self.client.get(path).get_data(as_text=True)
+            self.assertIn("data-open-sync", body, path)
+            self.assertIn('id="sync-dialog"', body, path)
+        self.assertIn("Eşitle", self.client.get("/tr/").get_data(as_text=True))
+
+    def test_codes_survive_a_restart(self):
+        path = os.environ["DWFE_SYNC_DB"]
+        code = SyncStore(path).create()
+        SyncStore(path).push(code, {"progress": {"k": _entry(0.5, 1)}})
+        self.assertIn("k", SyncStore(path).get(code)["progress"])
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@
   'use strict';
 
   var SETTINGS_KEY = 'dwfe:settings';
+  var SETTINGS_AT_KEY = 'dwfe:settings-at';
   var PROGRESS_KEY = 'dwfe:progress';
   var root = document.documentElement;
   var live = document.getElementById('live-region');
@@ -69,6 +70,14 @@
   /* --- settings ----------------------------------------------------------- */
 
   var settings = Object.assign({}, DEFAULTS, readStore(SETTINGS_KEY, {}));
+  // When the reader last changed a setting, so sync knows whose to keep.
+  var settingsAt = readStore(SETTINGS_AT_KEY, 0);
+
+  function touchSettings() {
+    settingsAt = Date.now();
+    writeStore(SETTINGS_AT_KEY, settingsAt);
+    if (window.dwfeSyncSoon) window.dwfeSyncSoon();
+  }
 
   function applySettings() {
     root.setAttribute('data-theme', settings.theme);
@@ -109,6 +118,7 @@
 
   function setSetting(name, value) {
     settings[name] = value;
+    touchSettings();
     applySettings();
   }
 
@@ -129,6 +139,7 @@
   if (resetButton) {
     resetButton.addEventListener('click', function () {
       settings = Object.assign({}, DEFAULTS);
+      touchSettings();
       applySettings();
       announce(resetButton.textContent.trim());
     });
@@ -219,7 +230,11 @@
     return [language, book, chapter].join('/');
   }
 
-  if (article && progressBar) {
+  // Everything below that reads `progress` waits for renderProgress(), which
+  // runs once the first sync has answered (or straight away without sync), so
+  // a place saved on another device is what the page shows and resumes.
+  function trackChapter() {
+    if (!article || !progressBar) return;
     progressWrap.hidden = false;
     var book = article.getAttribute('data-book');
     var chapterSlug = article.getAttribute('data-chapter');
@@ -233,6 +248,11 @@
       var percent = Math.round(ratio * 100);
       progressBar.style.width = percent + '%';
       progressBar.setAttribute('aria-valuenow', String(percent));
+      // Restoring a saved position is not reading. Keep its timestamp unless
+      // the reader actually moved, or a fresh page load would outrank a
+      // further position synced from another device.
+      var previous = progress[key];
+      if (previous && Math.abs(previous.ratio - ratio) < 0.01) return;
       progress[key] = {
         ratio: ratio,
         title: heading ? heading.textContent.trim() : chapterSlug,
@@ -252,13 +272,18 @@
       });
     }, { passive: true });
 
+    var saveProgress = function () {
+      writeStore(PROGRESS_KEY, progress);
+      if (window.dwfeSyncSoon) window.dwfeSyncSoon();
+    };
     window.addEventListener('beforeunload', function () { writeStore(PROGRESS_KEY, progress); });
     window.addEventListener('pagehide', function () { writeStore(PROGRESS_KEY, progress); });
-    window.setInterval(function () { writeStore(PROGRESS_KEY, progress); }, 15000);
+    window.setInterval(saveProgress, 15000);
 
     // Offer to pick up where the reader left off, without hijacking the scroll.
     var saved = progress[key];
-    if (saved && saved.ratio > 0.04 && saved.ratio < 0.95 && !window.location.hash) {
+    // Sync can delay this a moment; never yank a reader who already scrolled.
+    if (saved && saved.ratio > 0.04 && saved.ratio < 0.95 && !window.location.hash && window.scrollY < 40) {
       var scrollable = document.documentElement.scrollHeight - window.innerHeight;
       window.scrollTo({ top: saved.ratio * scrollable, behavior: 'auto' });
     }
@@ -295,96 +320,500 @@
     return best;
   }
 
+  function renderProgress() {
+    trackChapter();
+    renderResume();
+    renderShelf();
+  }
+
   // Book page: surface the most recent unfinished chapter of this book.
-  var resumeLink = document.getElementById('resume-link');
-  if (resumeLink) {
-    var pageBook = (window.location.pathname.split('/book/')[1] || '').split('/')[0];
-    var newest = mostRecent(entriesForBook(pageBook || null), true);
-    if (newest) {
-      resumeLink.href = newest.url;
-      resumeLink.hidden = false;
-      resumeLink.title = newest.title;
-      // "Continue reading — Chapter 2" reads quicker than the chapter's name,
-      // and keeps the button to a predictable width. The number comes from the
-      // slug, so positions saved before this existed still work. Chapter 0 is
-      // the unnumbered primer, so it goes by its title like any other.
-      var numbered = /(?:^|\/)chapter-(\d+)$/.exec(newest.key || '');
-      var where = numbered && Number(numbered[1]) !== 0
-        ? fill(phrases.chapterNumber, { number: numbered[1] })
-        : newest.title;
-      resumeLink.textContent = resumeLink.textContent.trim() + ' — ' + where;
+  function renderResume() {
+    var resumeLink = document.getElementById('resume-link');
+    if (resumeLink) {
+      var pageBook = (window.location.pathname.split('/book/')[1] || '').split('/')[0];
+      var newest = mostRecent(entriesForBook(pageBook || null), true);
+      if (newest) {
+        resumeLink.href = newest.url;
+        resumeLink.hidden = false;
+        resumeLink.title = newest.title;
+        // "Continue reading — Chapter 2" reads quicker than the chapter's name,
+        // and keeps the button to a predictable width. The number comes from the
+        // slug, so positions saved before this existed still work. Chapter 0 is
+        // the unnumbered primer, so it goes by its title like any other.
+        var numbered = /(?:^|\/)chapter-(\d+)$/.exec(newest.key || '');
+        var where = numbered && Number(numbered[1]) !== 0
+          ? fill(phrases.chapterNumber, { number: numbered[1] })
+          : newest.title;
+        resumeLink.textContent = resumeLink.textContent.trim() + ' — ' + where;
 
-      // Mid-book, the action you want is "carry on", not "start". Swap the
-      // emphasis, rename the other button for what it now does, and move it
-      // out of the way to the end.
-      var startLink = document.getElementById('start-link');
-      if (startLink) {
-        var actions = startLink.parentNode;
-        resumeLink.classList.remove('ghost-button');
-        resumeLink.classList.add('primary-button');
-        startLink.classList.remove('primary-button');
-        startLink.classList.add('ghost-button');
-        startLink.textContent = startLink.getAttribute('data-label-restart') || startLink.textContent;
-        actions.insertBefore(resumeLink, actions.firstChild);
-        actions.appendChild(startLink);
+        // Mid-book, the action you want is "carry on", not "start". Swap the
+        // emphasis, rename the other button for what it now does, and move it
+        // out of the way to the end.
+        var startLink = document.getElementById('start-link');
+        if (startLink) {
+          var actions = startLink.parentNode;
+          resumeLink.classList.remove('ghost-button');
+          resumeLink.classList.add('primary-button');
+          startLink.classList.remove('primary-button');
+          startLink.classList.add('ghost-button');
+          startLink.textContent = startLink.getAttribute('data-label-restart') || startLink.textContent;
+          actions.insertBefore(resumeLink, actions.firstChild);
+          actions.appendChild(startLink);
 
-        // Opening chapter one makes it the place "continue" returns to, so
-        // check that is what they meant.
-        var restartDialog = document.getElementById('restart-dialog');
-        if (restartDialog && typeof restartDialog.showModal === 'function') {
-          var body = restartDialog.querySelector('[data-restart-body]');
-          if (body) body.textContent = fill(phrases.restartBody, { chapter: where });
-          startLink.addEventListener('click', function (event) {
-            event.preventDefault();
-            restartDialog.showModal();
-          });
+          // Opening chapter one makes it the place "continue" returns to, so
+          // check that is what they meant.
+          var restartDialog = document.getElementById('restart-dialog');
+          if (restartDialog && typeof restartDialog.showModal === 'function') {
+            var body = restartDialog.querySelector('[data-restart-body]');
+            if (body) body.textContent = fill(phrases.restartBody, { chapter: where });
+            startLink.addEventListener('click', function (event) {
+              event.preventDefault();
+              restartDialog.showModal();
+            });
+          }
         }
       }
     }
   }
 
   // Library page: a "continue reading" card plus a progress bar per book.
-  var continueRow = document.getElementById('continue-row');
-  if (continueRow) {
-    var latest = mostRecent(entriesForBook(null), true);
-    if (latest) {
-      var card = document.getElementById('continue-card');
-      var percent = Math.round(latest.ratio * 100);
-      card.href = latest.url;
-      card.querySelector('[data-continue-title]').textContent = latest.title;
-      card.querySelector('[data-continue-book]').textContent = latest.book || '';
-      card.querySelector('[data-continue-fill]').style.width = percent + '%';
-      card.querySelector('[data-continue-percent]').textContent = percent + '%';
-      continueRow.hidden = false;
+  function renderShelf() {
+    var continueRow = document.getElementById('continue-row');
+    if (continueRow) {
+      var latest = mostRecent(entriesForBook(null), true);
+      if (latest) {
+        var card = document.getElementById('continue-card');
+        var percent = Math.round(latest.ratio * 100);
+        card.href = latest.url;
+        card.querySelector('[data-continue-title]').textContent = latest.title;
+        card.querySelector('[data-continue-book]').textContent = latest.book || '';
+        card.querySelector('[data-continue-fill]').style.width = percent + '%';
+        card.querySelector('[data-continue-percent]').textContent = percent + '%';
+        continueRow.hidden = false;
+      }
     }
+
+    document.querySelectorAll('[data-book-slug]').forEach(function (card) {
+      var wrap = card.querySelector('[data-book-progress]');
+      if (!wrap) return;
+      var entries = entriesForBook(card.getAttribute('data-book-slug'));
+      if (!entries.length) return;
+      var recent = mostRecent(entries, false);
+      var percent = Math.round(recent.ratio * 100);
+      card.querySelector('[data-book-fill]').style.width = percent + '%';
+      card.querySelector('[data-book-label]').textContent = recent.title + ' · ' + percent + '%';
+      wrap.hidden = false;
+    });
+
+    document.querySelectorAll('.chapter-card').forEach(function (card) {
+      var badge = card.querySelector('[data-resume-badge]');
+      if (!badge) return;
+      var url = card.getAttribute('href');
+      var match = null;
+      Object.keys(progress).forEach(function (key) {
+        var entry = progress[key];
+        if (entry && entry.url === url) match = entry;
+      });
+      if (match && match.ratio > 0.02) {
+        badge.hidden = false;
+        badge.textContent = Math.round(match.ratio * 100) + '%';
+      }
+    });
   }
 
-  document.querySelectorAll('[data-book-slug]').forEach(function (card) {
-    var wrap = card.querySelector('[data-book-progress]');
-    if (!wrap) return;
-    var entries = entriesForBook(card.getAttribute('data-book-slug'));
-    if (!entries.length) return;
-    var recent = mostRecent(entries, false);
-    var percent = Math.round(recent.ratio * 100);
-    card.querySelector('[data-book-fill]').style.width = percent + '%';
-    card.querySelector('[data-book-label]').textContent = recent.title + ' · ' + percent + '%';
-    wrap.hidden = false;
+  /* --- cross-device sync ---------------------------------------------------- */
+
+  // An 8-digit code stands in for an account. It lives in a cookie so the
+  // server's /sync/<code> link (what the QR code points at) can set it too.
+  // Every push sends this device's progress and settings and gets back the
+  // merge of every device on the code: newest wins per chapter, and the most
+  // recently changed settings win as a whole.
+  var SYNC_COOKIE = 'dwfe_sync';
+  var SYNC_AT_KEY = 'dwfe:sync-at';
+  var SYNC_FIRST_WAIT_MS = 2500;   // how long the page waits before showing progress anyway
+  var SYNC_MIN_GAP_MS = 20000;     // pull at most this often on focus
+
+  function readCookie(name) {
+    var found = null;
+    String(document.cookie || '').split(';').forEach(function (part) {
+      var pair = part.trim().split('=');
+      if (pair[0] === name) found = decodeURIComponent(pair.slice(1).join('='));
+    });
+    return found;
+  }
+
+  function writeCookie(name, value) {
+    var secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = value === null
+      ? name + '=; Max-Age=0; Path=/; SameSite=Lax'
+      : name + '=' + encodeURIComponent(value) + '; Max-Age=' + (60 * 60 * 24 * 400) + '; Path=/; SameSite=Lax' + secure;
+  }
+
+  function normaliseCode(raw) {
+    var digits = String(raw || '').replace(/[\s-]/g, '');
+    return /^\d{8}$/.test(digits) ? digits : null;
+  }
+
+  function formatCode(code) {
+    return code.slice(0, 4) + ' ' + code.slice(4);
+  }
+
+  var syncCode = normaliseCode(readCookie(SYNC_COOKIE));
+  var lastPushed = null;     // the payload last accepted, to skip no-op pushes
+  var lastPullAt = 0;
+  var pushTimer = null;
+
+  function syncPayload() {
+    return JSON.stringify({
+      progress: progress,
+      settings: { at: settingsAt, values: settings }
+    });
+  }
+
+  // Fold the server's merged document into this device.
+  var remoteMovedProgress = false;   // did the last sync bring in reading from elsewhere?
+
+  function applyRemote(doc) {
+    var changed = false;
+    var remote = (doc && doc.progress) || {};
+    Object.keys(remote).forEach(function (key) {
+      var mine = progress[key];
+      if (!mine || remote[key].at > mine.at) {
+        progress[key] = remote[key];
+        changed = true;
+      }
+    });
+    if (changed) writeStore(PROGRESS_KEY, progress);
+    remoteMovedProgress = changed;
+
+    var theirs = doc && doc.settings;
+    if (theirs && theirs.values && theirs.at > settingsAt) {
+      settings = Object.assign({}, DEFAULTS, theirs.values);
+      settingsAt = theirs.at;
+      writeStore(SETTINGS_AT_KEY, settingsAt);
+      applySettings();
+    }
+    writeStore(SYNC_AT_KEY, Date.now());
+    paintSyncStatus();
+  }
+
+  function forgetCode(message) {
+    syncCode = null;
+    lastPushed = null;
+    writeCookie(SYNC_COOKIE, null);
+    paintSyncButton();
+    if (message) announce(message);
+  }
+
+  // Push this device's state and take back the merge. Resolves to true on
+  // success; never rejects, since a failed sync must not break reading.
+  function pushSync(force) {
+    if (!syncCode || !window.fetch) return Promise.resolve(false);
+    var body = syncPayload();
+    lastPullAt = Date.now();
+    if (!force && body === lastPushed) return Promise.resolve(true);
+    var code = syncCode;
+    return fetch('/api/sync/' + code, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: body,
+      credentials: 'same-origin'
+    })
+      .then(function (response) {
+        if (response.status === 404) {
+          // The code is gone from the server: stop trying, keep local data.
+          if (code === syncCode) forgetCode(phrases.syncUnknown);
+          return false;
+        }
+        if (!response.ok) return false;
+        return response.json().then(function (doc) {
+          if (code !== syncCode) return false;
+          applyRemote(doc);
+          lastPushed = syncPayload();
+          return true;
+        });
+      })
+      .catch(function () { return false; });
+  }
+
+  // Coalesce bursts of changes (a dragged slider, a scroll) into one push.
+  window.dwfeSyncSoon = function () {
+    if (!syncCode) return;
+    window.clearTimeout(pushTimer);
+    pushTimer = window.setTimeout(function () { pushSync(false); }, 1500);
+  };
+
+  // Leaving the page: hand the last position over without waiting for a reply.
+  window.addEventListener('pagehide', function () {
+    if (!syncCode || !navigator.sendBeacon) return;
+    var body = syncPayload();
+    if (body === lastPushed) return;
+    try {
+      navigator.sendBeacon('/api/sync/' + syncCode, new Blob([body], { type: 'text/plain;charset=UTF-8' }));
+    } catch (err) { /* best effort */ }
   });
 
-  document.querySelectorAll('.chapter-card').forEach(function (card) {
-    var badge = card.querySelector('[data-resume-badge]');
-    if (!badge) return;
-    var url = card.getAttribute('href');
-    var match = null;
-    Object.keys(progress).forEach(function (key) {
-      var entry = progress[key];
-      if (entry && entry.url === url) match = entry;
-    });
-    if (match && match.ratio > 0.02) {
-      badge.hidden = false;
-      badge.textContent = Math.round(match.ratio * 100) + '%';
-    }
+  // Coming back to a tab may mean another device has moved on meanwhile.
+  function pullIfStale() {
+    if (!syncCode || Date.now() - lastPullAt < SYNC_MIN_GAP_MS) return;
+    pushSync(true);
+  }
+  window.addEventListener('focus', pullIfStale);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') pullIfStale();
   });
+
+  // First sync, then draw the progress UI — whichever comes first of the
+  // answer and a short timeout, so a slow network never hides the page.
+  (function () {
+    var drawn = false;
+    function draw() {
+      if (drawn) return;
+      drawn = true;
+      renderProgress();
+    }
+    if (syncCode) {
+      pushSync(true).then(draw);
+      window.setTimeout(draw, SYNC_FIRST_WAIT_MS);
+    } else {
+      draw();
+    }
+  })();
+
+  /* --- sync dialog --------------------------------------------------------- */
+
+  var syncDialog = document.getElementById('sync-dialog');
+  var syncButton = document.querySelector('[data-open-sync]');
+
+  function paintSyncButton() {
+    if (!syncButton) return;
+    syncButton.hidden = false;
+    syncButton.classList.toggle('is-synced', Boolean(syncCode));
+    var dot = syncButton.querySelector('[data-sync-dot]');
+    if (dot) dot.hidden = !syncCode;
+  }
+
+  function paintSyncStatus() {
+    if (!syncDialog) return;
+    var status = syncDialog.querySelector('[data-sync-status]');
+    if (!status) return;
+    var at = readStore(SYNC_AT_KEY, 0);
+    status.textContent = at
+      ? fill(phrases.syncLast, {
+        when: new Date(at).toLocaleString(document.documentElement.lang || undefined, {
+          dateStyle: 'medium', timeStyle: 'short'
+        })
+      })
+      : phrases.syncNever;
+  }
+
+  if (syncDialog && syncButton) {
+    var steps = syncDialog.querySelectorAll('[data-sync-step]');
+    var codeInput = syncDialog.querySelector('[data-sync-code-input]');
+    var errorBox = syncDialog.querySelector('[data-sync-error]');
+    var scanButton = syncDialog.querySelector('[data-sync-scan]');
+    var scanner = syncDialog.querySelector('[data-sync-scanner]');
+    var video = syncDialog.querySelector('[data-sync-video]');
+    var copyButton = syncDialog.querySelector('[data-sync-copy]');
+    var scanLabel = scanButton ? scanButton.textContent.trim() : '';
+    var copyLabel = copyButton ? copyButton.textContent.trim() : '';
+    var stream = null;
+
+    var showStep = function (name) {
+      steps.forEach(function (step) {
+        step.hidden = step.getAttribute('data-sync-step') !== name;
+      });
+      if (name !== 'enter') stopScan();
+      if (name === 'linked' && syncCode) {
+        syncDialog.querySelector('[data-sync-code]').textContent = formatCode(syncCode);
+        var qr = syncDialog.querySelector('[data-sync-qr]');
+        qr.src = '/api/sync/' + syncCode + '/qr.svg';
+        qr.alt = fill(qr.getAttribute('data-alt-template'), { code: formatCode(syncCode) });
+        paintSyncStatus();
+      }
+      if (name === 'enter') {
+        showError('');
+        if (codeInput) window.setTimeout(function () { codeInput.focus(); }, 30);
+      }
+    };
+
+    var showError = function (message) {
+      if (errorBox) errorBox.textContent = message || '';
+      if (codeInput) codeInput.setAttribute('aria-invalid', message ? 'true' : 'false');
+    };
+
+    var openSync = function (step) {
+      showStep(step || (syncCode ? 'linked' : 'choose'));
+      if (syncDialog.open) return;
+      if (typeof syncDialog.showModal === 'function') syncDialog.showModal();
+      else syncDialog.setAttribute('open', '');
+    };
+
+    // Linking a device pulls in progress the page has not drawn yet, so
+    // reload into the confirmation rather than redraw everything by hand.
+    var reloadLinked = function () {
+      var url = new URL(window.location.href);
+      url.searchParams.set('sync', 'linked');
+      window.location.replace(url.toString());
+    };
+
+    var join = function (raw) {
+      var code = normaliseCode(raw);
+      if (!code) { showError(phrases.syncInvalid); return; }
+      showError('');
+      fetch('/api/sync/' + code, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+        .then(function (response) {
+          if (response.status === 404) { showError(phrases.syncUnknown); return; }
+          if (!response.ok) { showError(phrases.syncFailed); return; }
+          syncCode = code;
+          writeCookie(SYNC_COOKIE, code);
+          // Send what this device has read before the page reloads, so
+          // nothing read here is lost to the other devices.
+          return pushSync(true).then(reloadLinked);
+        })
+        .catch(function () { showError(phrases.syncFailed); });
+    };
+
+    syncButton.addEventListener('click', function () { openSync(); });
+
+    syncDialog.querySelectorAll('[data-sync-show]').forEach(function (button) {
+      button.addEventListener('click', function () { showStep(button.getAttribute('data-sync-show')); });
+    });
+
+    syncDialog.querySelector('[data-sync-create]').addEventListener('click', function () {
+      var button = this;
+      button.disabled = true;
+      fetch('/api/sync', { method: 'POST', headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+        .then(function (response) {
+          if (!response.ok) throw new Error('create failed');
+          return response.json();
+        })
+        .then(function (doc) {
+          syncCode = doc.code;
+          writeCookie(SYNC_COOKIE, syncCode);
+          paintSyncButton();
+          showStep('linked');
+          announce(phrases.syncCreated);
+          return pushSync(true);
+        })
+        .catch(function () { announce(phrases.syncFailed); })
+        .then(function () { button.disabled = false; });
+    });
+
+    syncDialog.querySelector('[data-sync-enter-form]').addEventListener('submit', function (event) {
+      event.preventDefault();
+      join(codeInput.value);
+    });
+
+    syncDialog.querySelector('[data-sync-now]').addEventListener('click', function () {
+      var button = this;
+      button.disabled = true;
+      pushSync(true).then(function (ok) {
+        button.disabled = false;
+        if (!ok && syncCode) announce(phrases.syncFailed);
+        // Reading from another device arrived: redraw the page from it.
+        if (ok && remoteMovedProgress) window.location.reload();
+      });
+    });
+
+    if (copyButton) {
+      copyButton.addEventListener('click', function () {
+        if (!syncCode || !navigator.clipboard) return;
+        navigator.clipboard.writeText(syncCode).then(function () {
+          copyButton.textContent = copyButton.getAttribute('data-label-done');
+          announce(copyButton.textContent);
+          window.setTimeout(function () { copyButton.textContent = copyLabel; }, 2000);
+        }, function () { /* clipboard refused; the code is on screen anyway */ });
+      });
+      if (!navigator.clipboard) copyButton.hidden = true;
+    }
+
+    syncDialog.querySelector('[data-sync-disconnect]').addEventListener('click', function () {
+      forgetCode(phrases.syncUnlinked);
+      showStep('choose');
+    });
+
+    /* QR scanning uses the browser's own BarcodeDetector (Chrome on Android,
+       for one). Where it is missing the button stays hidden and the hint
+       points at the phone's camera app, which opens the QR link directly. */
+    var detector = null;
+    try {
+      if ('BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      }
+    } catch (err) { detector = null; }
+
+    function stopScan() {
+      if (stream) {
+        stream.getTracks().forEach(function (track) { track.stop(); });
+        stream = null;
+      }
+      if (video) video.srcObject = null;
+      if (scanner) scanner.hidden = true;
+      if (scanButton) scanButton.textContent = scanLabel;
+    }
+
+    function codeFromScan(text) {
+      var match = /\/sync\/(\d{8})(?:[/?#]|$)/.exec(text) || /^\s*(\d{4}\s?\d{4})\s*$/.exec(text);
+      return match ? normaliseCode(match[1]) : null;
+    }
+
+    function scanFrame() {
+      if (!stream) return;
+      detector.detect(video).then(function (found) {
+        var code = null;
+        (found || []).forEach(function (item) { code = code || codeFromScan(item.rawValue || ''); });
+        if (code) {
+          stopScan();
+          codeInput.value = formatCode(code);
+          join(code);
+        } else {
+          window.setTimeout(scanFrame, 250);
+        }
+      }, function () { window.setTimeout(scanFrame, 500); });
+    }
+
+    if (scanButton && detector) {
+      scanButton.hidden = false;
+      scanButton.addEventListener('click', function () {
+        if (stream) { stopScan(); return; }
+        showError('');
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+          .then(function (media) {
+            stream = media;
+            video.srcObject = media;
+            scanner.hidden = false;
+            scanButton.textContent = scanButton.getAttribute('data-label-stop');
+            return video.play();
+          })
+          .then(scanFrame)
+          .catch(function () {
+            stopScan();
+            showError(phrases.syncScanFailed);
+          });
+      });
+    }
+
+    syncDialog.addEventListener('close', stopScan);
+
+    paintSyncButton();
+
+    // Arriving from the QR link or after joining: say so, then tidy the URL.
+    var params = new URLSearchParams(window.location.search);
+    var arrived = params.get('sync');
+    if (arrived) {
+      params.delete('sync');
+      var query = params.toString();
+      window.history.replaceState(null, '', window.location.pathname + (query ? '?' + query : '') + window.location.hash);
+      if (arrived === 'linked' && syncCode) {
+        announce(phrases.syncLinked);
+        openSync('linked');
+      } else if (arrived === 'unknown') {
+        openSync('enter');
+        showError(phrases.syncUnknown);
+      }
+    }
+  }
 
   /* --- focus mode: track the paragraph in the reading zone ----------------- */
 

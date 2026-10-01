@@ -1031,6 +1031,79 @@ kbd {
 
 .subscribe-caveat { margin-bottom: 1.2rem; }
 
+/* --- cross-device sync ---------------------------------------------------- */
+
+.sync-button { position: relative; }
+.sync-button.is-synced { color: var(--accent); border-color: var(--accent); }
+.sync-button .sync-dot {
+  display: block;
+  position: absolute;
+  inset-block-start: -3px;
+  inset-inline-end: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+}
+.sync-button .sync-dot[hidden] { display: none; }
+
+.sync-dialog { width: min(100% - 2rem, 28rem); max-height: 92vh; overflow-y: auto; }
+.sync-step[hidden] { display: none; }
+
+.sync-choices { display: grid; gap: .35rem; }
+.sync-choices button { width: 100%; justify-content: center; font-size: 1rem; }
+.sync-choice-hint { margin: 0 0 .9rem; font-size: .84rem; color: var(--ink-faint); text-align: center; }
+
+.sync-enter-form label { display: block; font-size: .84rem; font-weight: 600; margin-bottom: .45rem; }
+.sync-enter-row { display: flex; gap: .5rem; }
+.sync-code-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 1.3rem;
+  letter-spacing: .12em;
+  font-variant-numeric: tabular-nums;
+  padding: .55rem .7rem;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.sync-code-input[aria-invalid="true"] { border-color: var(--warn); }
+.sync-error { min-height: 1.3em; margin: .4rem 0 .8rem; font-size: .86rem; color: var(--warn); }
+.sync-error:empty { margin-bottom: .2rem; }
+
+.sync-scan-button { width: 100%; justify-content: center; margin-bottom: .8rem; }
+.sync-scanner { margin: 0 0 1rem; border-radius: var(--radius); overflow: hidden; background: #000; }
+.sync-scanner[hidden] { display: none; }
+.sync-scanner video { display: block; width: 100%; max-height: 50vh; object-fit: cover; }
+
+.sync-label { margin: .2rem 0 0; font-size: .84rem; color: var(--ink-faint); text-align: center; }
+.sync-code {
+  margin: .1rem 0 .8rem;
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+/* Always black on white with a quiet zone: scanners need it in every theme. */
+.sync-qr {
+  display: block;
+  margin: 0 auto 1rem;
+  width: min(240px, 70vw);
+  height: auto;
+  aspect-ratio: 1;
+  background: #fff;
+  border-radius: 8px;
+}
+.sync-status { margin: 0 0 .8rem; font-size: .86rem; color: var(--ink-soft); }
+.sync-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.sync-actions button { flex: 1; justify-content: center; }
+.sync-dialog .settings-actions { margin-top: 1rem; }
+
 /* A resumed chapter title can be long; keep the button to one line. */
 #resume-link {
   max-width: min(100%, 30rem);
