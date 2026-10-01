@@ -1092,6 +1092,36 @@
   window.addEventListener('focus', checkSubscriptions);
   window.setInterval(checkSubscriptions, POLL_MS);
 
+  /* --- phones: tuck the header away while reading ------------------------- */
+
+  // On a narrow screen the sticky header costs a lot of reading room. It
+  // slides up while the reader scrolls down and returns on the first scroll
+  // up; focusing anything in it brings it back too (that part is CSS).
+  var siteHeader = document.querySelector('.site-header');
+  var narrow = window.matchMedia ? window.matchMedia('(max-width: 640px)') : null;
+  if (siteHeader && narrow) {
+    var lastScrollY = window.scrollY;
+    var headerTick = false;
+    window.addEventListener('scroll', function () {
+      if (headerTick) return;
+      headerTick = true;
+      window.requestAnimationFrame(function () {
+        headerTick = false;
+        var y = window.scrollY;
+        var moved = y - lastScrollY;
+        if (!narrow.matches || y <= siteHeader.offsetHeight) {
+          siteHeader.classList.remove('is-tucked');
+        } else if (moved > 8) {
+          siteHeader.classList.add('is-tucked');
+        } else if (moved < -8) {
+          siteHeader.classList.remove('is-tucked');
+        }
+        // Small jitters (momentum, address-bar resizes) don't count.
+        if (Math.abs(moved) > 8 || y <= siteHeader.offsetHeight) lastScrollY = y;
+      });
+    }, { passive: true });
+  }
+
   /* --- keyboard shortcuts -------------------------------------------------- */
 
   function isTypingTarget(target) {

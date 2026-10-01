@@ -204,6 +204,11 @@ preferences.
   percentage badge on chapters already started. Progress is tracked per
   language, so a Turkish page never offers to resume an English chapter.
 * A print stylesheet renders the chapter as clean prose without the chrome.
+* **Phones** — the header shrinks to one row (site name, a compact language
+  menu, Sync, Settings) and slides out of the way while you read, coming back
+  on the first scroll up. Every control is at least 44px tall, form controls
+  use 16px text so iOS doesn't zoom, and notches and the home indicator are
+  kept clear of content.
 
 ## Syncing between devices
 
