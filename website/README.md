@@ -13,6 +13,7 @@ website/
 ├── markdown_lite.py   tiny Markdown/plain-text renderer for README and LICENSE
 │                     (headings, emphasis, links, lists, rules, tables)
 ├── sync.py            cross-device sync codes (SQLite) and the merge rules
+├── qr.py              sync-link QR codes: segno if installed, else a built-in encoder
 ├── test_reader.py     unit tests (no network, no fixtures on the real book)
 ├── templates/         Jinja templates
 └── static/            stylesheet, reader script, favicon
