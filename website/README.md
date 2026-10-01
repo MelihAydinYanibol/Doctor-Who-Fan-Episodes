@@ -12,6 +12,7 @@ website/
 ├── i18n.py            interface translations (English, Turkish) + language names
 ├── markdown_lite.py   tiny Markdown/plain-text renderer for README and LICENSE
 │                     (headings, emphasis, links, lists, rules, tables)
+├── sync.py            cross-device sync codes (SQLite) and the merge rules
 ├── test_reader.py     unit tests (no network, no fixtures on the real book)
 ├── templates/         Jinja templates
 └── static/            stylesheet, reader script, favicon
@@ -34,6 +35,8 @@ By default it reads the checkout it lives in, so it works offline.
 * `/<lang>/book/<book>` — that book's hero and chapter list.
 * `/<lang>/read/<book>/<chapter>` — the chapter itself.
 * `/<lang>/legal` — the notice and licence, rendered from the repository.
+* `/sync/<code>` — where a sync QR code points; links the device and returns
+  to the library.
 
 ## Book banners
 
@@ -146,12 +149,14 @@ All optional, all environment variables:
 | `DWFE_LOCAL_CACHE_TTL` | `0` | the same, for a checkout on disk — zero means edits appear at once |
 | `DWFE_REFRESH_TOKEN` | — | required header for `POST /api/refresh` |
 | `DWFE_WEBHOOK_SECRET` | — | GitHub webhook secret |
+| `DWFE_SYNC_DB` | `website/data/sync.sqlite3` | SQLite file holding sync codes (`/data/sync.sqlite3` in Docker) |
+| `DWFE_TRUST_PROXY` | off | set to `1` behind a reverse proxy so QR links use the public `https://` address |
 | `DWFE_HOST` / `DWFE_PORT` | `127.0.0.1` / `5000` | dev server binding |
 
 ## Reading and accessibility features
 
 Everything below is available without an account and saved per browser in
-`localStorage`; the site works with JavaScript disabled too, just without the
+`localStorage` (and carried between devices if you turn on Sync, below); the site works with JavaScript disabled too, just without the
 preferences.
 
 * **Themes** — system, light, dark, sepia, and a black/yellow high-contrast
@@ -199,6 +204,48 @@ preferences.
   language, so a Turkish page never offers to resume an English chapter.
 * A print stylesheet renders the chapter as clean prose without the chrome.
 
+## Syncing between devices
+
+The **Sync** button in the header carries reading progress and reading
+settings between devices without an account:
+
+1. On the first device choose **Create a sync code**. The server hands out a
+   random, unused 8-digit code and the dialog shows it with a QR code.
+2. On another device choose **Enter a code** and type it, or press
+   **Scan QR code** (shown where the browser has `BarcodeDetector`, e.g.
+   Chrome on Android). Any phone camera app works too: the QR code is a link to
+   `/sync/<code>`, which links the device by itself.
+3. Either way the code is saved in a `dwfe_sync` cookie, and from then on the
+   device syncs on its own: when a page loads, every few seconds after the
+   reader scrolls or changes a setting, when the tab regains focus, and with a
+   beacon as the page closes.
+
+Each push sends the device's progress and settings and gets back the merge
+across every device on that code — the newest position wins per chapter, the
+most recently changed settings win as a whole — so devices converge whatever
+order they sync in. Progress is still kept in `localStorage` first, so reading
+works offline and syncs when the network returns. **Stop syncing on this
+device** forgets the code and keeps the local progress.
+
+The API behind it: `POST /api/sync` (new code), `GET`/`POST /api/sync/<code>`
+(read / push-and-merge), `GET /api/sync/<code>/qr.svg`.
+
+Things to know before deploying it:
+
+* **The code is the whole credential.** Anyone who has it can see and change
+  that reading progress; the dialog says so. That is the trade for not asking
+  for an email address, and the data is only reading positions and font
+  choices. Pushed documents are validated (known setting names only,
+  same-site URLs only, 256 KB and 1000 chapters at most).
+* **Keep the database.** Codes live in the SQLite file at `DWFE_SYNC_DB`. The
+  Docker image keeps it in the `/data` volume — mount one
+  (`-v dwfe-sync:/data`) or codes vanish on redeploy. Hosts with an ephemeral
+  filesystem need a persistent disk for it.
+* Behind nginx/Caddy/a platform proxy, set `DWFE_TRUST_PROXY=1` so the QR link
+  uses the public address rather than the internal one.
+* There is no rate limiting on creating codes or guessing them; put the site
+  behind a proxy that rate-limits `/api/sync` if that becomes a concern.
+
 Verified with axe-core (WCAG 2.1 A/AA plus best practices): zero violations on
 the library, book, chapter, legal and error pages in the light, dark, sepia and
 high-contrast themes, in both languages. The one deliberate exception is focus
@@ -224,9 +271,9 @@ reports whether chapters are loading, for uptime checks.
 cd website && python -m unittest discover
 ```
 
-33 tests covering file-name parsing, language detection, banner discovery,
+Tests covering file-name parsing, language detection, banner discovery,
 prose and Markdown parsing (tables included), HTML escaping, the GitHub source
-(with stubbed HTTP), webhook signatures, refresh tokens, and every route.
+(with stubbed HTTP), webhook signatures, refresh tokens, sync codes and merging, and every route.
 
 ## Licence
 

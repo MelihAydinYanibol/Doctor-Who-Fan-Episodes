@@ -9,7 +9,11 @@ COPY . .
 
 ENV DWFE_SOURCE=github \
     DWFE_CACHE_TTL=300 \
+    DWFE_SYNC_DB=/data/sync.sqlite3 \
     PYTHONUNBUFFERED=1
+
+# Sync codes live here; mount a volume so they survive a redeploy.
+VOLUME ["/data"]
 
 EXPOSE 8000
 HEALTHCHECK --interval=60s --timeout=5s CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"

@@ -17,11 +17,16 @@ Configuration (all optional, all via environment variables):
                          (default: 0 — edits appear as soon as they are saved)
     DWFE_REFRESH_TOKEN   shared secret for POST /api/refresh
     DWFE_WEBHOOK_SECRET  secret for the GitHub push webhook at /webhook/github
+    DWFE_SYNC_DB         SQLite file for cross-device sync codes
+                         (default: website/data/sync.sqlite3)
+    DWFE_TRUST_PROXY     1 behind a reverse proxy, so QR links use the public
+                         https:// address from X-Forwarded-* headers
 """
 
 from __future__ import annotations
 
 import datetime as _dt
+import io
 import os
 import random
 
@@ -46,10 +51,14 @@ from content import (
 )
 from i18n import LANGUAGE_NAMES, language_name, text_direction, translator
 from markdown_lite import render_document
+from sync import SyncStore, normalise_code
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONTENT_ROOT = os.path.dirname(BASE_DIR)
 LANG_COOKIE = "dwfe_lang"
+SYNC_COOKIE = "dwfe_sync"
+# A reading history is a few kilobytes; anything far beyond that is not one.
+SYNC_MAX_BODY = 256 * 1024
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -71,6 +80,7 @@ def create_app() -> Flask:
         LOCAL_CACHE_TTL=float(os.environ.get("DWFE_LOCAL_CACHE_TTL", "0")),
         REFRESH_TOKEN=os.environ.get("DWFE_REFRESH_TOKEN") or None,
         WEBHOOK_SECRET=os.environ.get("DWFE_WEBHOOK_SECRET") or None,
+        SYNC_DB=os.environ.get("DWFE_SYNC_DB") or os.path.join(BASE_DIR, "data", "sync.sqlite3"),
         JSON_AS_ASCII=False,
     )
 
@@ -83,7 +93,14 @@ def create_app() -> Flask:
         ttl=app.config["CACHE_TTL"],
         local_ttl=app.config["LOCAL_CACHE_TTL"],
     )
+    if _env_bool("DWFE_TRUST_PROXY"):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     app.extensions["content"] = service
+    sync_store = SyncStore(app.config["SYNC_DB"])
+    app.extensions["sync"] = sync_store
 
     # ------------------------------------------------------------------
     # helpers
@@ -152,6 +169,15 @@ def create_app() -> Flask:
                 "unsupported": translate("subscribe_unsupported"),
                 "chapterNumber": translate("chapter_number"),
                 "restartBody": translate("restart_body"),
+                "syncLinked": translate("sync_linked"),
+                "syncCreated": translate("sync_created"),
+                "syncUnlinked": translate("sync_unlinked"),
+                "syncUnknown": translate("sync_unknown_code"),
+                "syncInvalid": translate("sync_invalid_code"),
+                "syncFailed": translate("sync_failed"),
+                "syncLast": translate("sync_last"),
+                "syncNever": translate("sync_never"),
+                "syncScanFailed": translate("sync_scan_failed"),
             },
         }
 
@@ -477,6 +503,80 @@ def create_app() -> Flask:
         library = service.refresh()
         return jsonify({"ok": True, "source": library.source_display, "error": library.error})
 
+    # ------------------------------------------------------------------
+    # cross-device sync
+    # ------------------------------------------------------------------
+
+    def with_sync_cookie(response: Response, code: str) -> Response:
+        # Readable by the page script: it is the script that syncs.
+        response.set_cookie(
+            SYNC_COOKIE,
+            code,
+            max_age=60 * 60 * 24 * 400,
+            samesite="Lax",
+            httponly=False,
+        )
+        return response
+
+    def sync_link(code: str) -> str:
+        return url_for("sync_join", code=code, _external=True)
+
+    @app.route("/api/sync", methods=["POST"])
+    def api_sync_create():
+        code = sync_store.create()
+        response = jsonify({"code": code, "link": sync_link(code)})
+        response.status_code = 201
+        return with_sync_cookie(response, code)
+
+    @app.route("/api/sync/<code>", methods=["GET", "POST"])
+    def api_sync(code: str):
+        code = normalise_code(code)
+        if code is None:
+            abort(404)
+        if request.method == "GET":
+            document = sync_store.get(code)
+        else:
+            if (request.content_length or 0) > SYNC_MAX_BODY:
+                abort(413)
+            # sendBeacon posts as text/plain, so don't insist on the header.
+            payload = request.get_json(force=True, silent=True)
+            if not isinstance(payload, dict):
+                abort(400)
+            document = sync_store.push(code, payload)
+        if document is None:
+            return jsonify({"error": "unknown code"}), 404
+        document["code"] = code
+        document["link"] = sync_link(code)
+        response = jsonify(document)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.route("/api/sync/<code>/qr.svg")
+    def api_sync_qr(code: str):
+        code = normalise_code(code)
+        if code is None or not sync_store.exists(code):
+            abort(404)
+        import segno  # only needed here; keeps the reader importable without it
+
+        buffer = io.BytesIO()
+        # Black on white whatever the theme: scanners want contrast, not style.
+        segno.make(sync_link(code), error="m").save(
+            buffer, kind="svg", scale=6, border=4, dark="#000", light="#fff", xmldecl=False
+        )
+        response = Response(buffer.getvalue(), mimetype="image/svg+xml")
+        response.headers["Cache-Control"] = "private, max-age=86400"
+        return response
+
+    @app.route("/sync/<code>")
+    def sync_join(code: str):
+        """Where the QR code points: a phone's own camera app can join from it."""
+        language = pick_language()
+        code = normalise_code(code)
+        if code is None or not sync_store.exists(code):
+            return redirect(url_for("index", lang=language, sync="unknown"))
+        response = redirect(url_for("index", lang=language, sync="linked"))
+        return with_sync_cookie(response, code)
+
     @app.route("/healthz")
     def healthz():
         library = service.library()
@@ -499,6 +599,14 @@ def create_app() -> Flask:
         context = base_context(language)
         context["language_variants"] = language_variants(None, None)
         return render_template("error.html", code=404, **context), 404
+
+    @app.errorhandler(413)
+    def too_large(_error):
+        return jsonify({"error": "too large"}), 413
+
+    @app.errorhandler(400)
+    def bad_request(_error):
+        return jsonify({"error": "bad request"}), 400
 
     @app.errorhandler(503)
     def unavailable(_error):
