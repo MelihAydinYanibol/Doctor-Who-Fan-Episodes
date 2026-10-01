@@ -1,2 +1,3 @@
 Flask>=3.0,<4.0
+# Optional: segno>=1.5 draws the sync QR codes; without it a built-in encoder does.
 # Optional, for production serving:  gunicorn>=21.2

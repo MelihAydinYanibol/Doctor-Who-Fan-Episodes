@@ -731,6 +731,31 @@ class QRTests(unittest.TestCase):
         self.assertFalse(any(ring))
 
     @unittest.skipUnless(__import__("importlib").util.find_spec("segno"), "segno not installed")
+    def test_segno_is_used_when_installed(self):
+        import qr
+
+        self.assertEqual(qr.qr_engine(), "segno")
+        svg = qr_svg("https://example.org/sync/12345678")
+        self.assertIn("<svg", svg)
+        self.assertNotIn("<?xml", svg)
+        self.assertNotIn('shape-rendering="crispEdges"><rect', svg)  # not the built-in output
+
+    def test_a_failing_segno_falls_back_to_the_built_in_encoder(self):
+        import qr
+
+        class Broken:
+            @staticmethod
+            def make(*args, **kwargs):
+                raise RuntimeError("broken install")
+
+        saved, qr._segno = qr._segno, Broken
+        try:
+            svg = qr_svg("https://example.org/sync/12345678")
+        finally:
+            qr._segno = saved
+        self.assertIn('viewBox="0 0 37 37"', svg)
+
+    @unittest.skipUnless(__import__("importlib").util.find_spec("segno"), "segno not installed")
     def test_function_patterns_match_segno(self):
         import segno
 
@@ -748,7 +773,14 @@ class QRTests(unittest.TestCase):
                             self.assertEqual(bool(reference[r][c]), mine[r][c], (text[:5], mask, r, c))
 
     def test_svg_is_black_on_white_with_a_quiet_zone(self):
-        svg = qr_svg("https://example.org/sync/12345678")
+        import qr
+
+        saved, qr._segno = qr._segno, None  # force the built-in encoder
+        try:
+            self.assertEqual(qr.qr_engine(), "builtin")
+            svg = qr_svg("https://example.org/sync/12345678")
+        finally:
+            qr._segno = saved
         self.assertTrue(svg.startswith("<svg"))
         self.assertIn('viewBox="0 0 37 37"', svg)  # 29 modules + 2 x 4
         self.assertIn('fill="#fff"', svg)

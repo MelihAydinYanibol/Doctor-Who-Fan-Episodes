@@ -1,6 +1,10 @@
-"""A small, dependency-free QR code encoder for the sync links.
+"""QR codes for the sync links: segno when installed, a built-in encoder if not.
 
-Byte mode, error correction level M, versions 1–10 (up to 213 bytes — a sync
+``qr_svg`` uses segno (``pip install segno``) when it is importable, and falls
+back to the small encoder below when it is missing or fails, so a QR code is
+never blank for want of an optional package.
+
+The built-in encoder: byte mode, error correction level M, versions 1–10 (up to 213 bytes — a sync
 link is about 40). Written out here so the site needs nothing beyond Flask:
 a missing optional package must never be the reason a QR code is blank.
 
@@ -11,6 +15,13 @@ all eight masks scored with the four penalty rules, best one kept.
 """
 
 from __future__ import annotations
+
+import io
+
+try:
+    import segno as _segno
+except ImportError:  # optional: the built-in encoder covers it
+    _segno = None
 
 # version -> (EC codewords per block, [(blocks, data codewords per block), ...])
 _LEVEL_M = {
@@ -290,6 +301,28 @@ def qr_matrix(text: str, mask: int | None = None) -> list[list[bool]]:
 
 def qr_svg(text: str, scale: int = 6, border: int = 4) -> str:
     """Black-on-white SVG of the QR code, with a quiet zone of ``border``."""
+    if _segno is not None:
+        try:
+            return _segno_svg(text, scale, border)
+        except Exception:  # a broken install must not cost the QR code
+            pass
+    return _builtin_svg(text, scale, border)
+
+
+def qr_engine() -> str:
+    """Which encoder ``qr_svg`` will use: "segno" or "builtin"."""
+    return "segno" if _segno is not None else "builtin"
+
+
+def _segno_svg(text: str, scale: int, border: int) -> str:
+    buffer = io.BytesIO()
+    _segno.make(text, error="m", micro=False).save(
+        buffer, kind="svg", scale=scale, border=border, dark="#000", light="#fff", xmldecl=False
+    )
+    return buffer.getvalue().decode("utf-8")
+
+
+def _builtin_svg(text: str, scale: int, border: int) -> str:
     grid = qr_matrix(text)
     size = len(grid) + 2 * border
     path = "".join(
