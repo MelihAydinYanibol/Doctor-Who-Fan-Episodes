@@ -569,6 +569,11 @@ class Edition:
                 return entry
         return None
 
+    @property
+    def story_chapters(self) -> list[Chapter]:
+        """The chapters a reader would count: the Chapter 0 primer is not one."""
+        return [chapter for chapter in self.chapters if not chapter.is_prelude]
+
     def by_slug(self, slug: str) -> Chapter | None:
         for chapter in self.chapters:
             if chapter.slug == slug:

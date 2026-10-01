@@ -359,6 +359,19 @@ class RouteTests(unittest.TestCase):
         self.assertIn("/en/read/my-book/chapter-1", body)
         self.assertIn("Alpha", body)
 
+    def test_the_chapter_0_primer_is_not_counted_as_a_chapter(self):
+        with open(os.path.join(self.root, "My Book", "Chapter 0 - Before You Begin"), "w", encoding="utf-8") as handle:
+            handle.write("Before You Begin\n\nA note for the reader.\n")
+        shelf = self.client.get("/en/").get_data(as_text=True)
+        self.assertIn("2 chapters", shelf)
+        self.assertNotIn("3 chapters", shelf)
+        book = self.client.get("/en/book/my-book").get_data(as_text=True)
+        self.assertIn("2 chapters", book)
+        # The primer is still listed and readable, and new-chapter detection
+        # still compares against every file the API reports.
+        self.assertIn("Before You Begin", book)
+        self.assertIn('data-count="3"', book)
+
     def test_book_page_offers_a_subscription(self):
         body = self.client.get("/en/book/my-book").get_data(as_text=True)
         self.assertIn('id="subscribe-button"', body)
