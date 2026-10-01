@@ -165,6 +165,35 @@
     button.addEventListener('click', toggleDialog);
   });
 
+  /* --- close any pop-up box by tapping outside it -------------------------- */
+
+  // A click on the dimmed backdrop lands on the <dialog> element itself, at
+  // a point outside its box. Both the press and the release have to be
+  // outside, so selecting text inside and dragging out doesn't close it.
+  // Closing this way is the same as pressing x or Esc.
+  function outsideBox(dialogEl, event) {
+    if (event.target !== dialogEl) return false;
+    var box = dialogEl.getBoundingClientRect();
+    return event.clientX < box.left || event.clientX > box.right ||
+      event.clientY < box.top || event.clientY > box.bottom;
+  }
+
+  function isModal(dialogEl) {
+    try { return dialogEl.matches(':modal'); } catch (err) { return dialogEl.open; }
+  }
+
+  document.querySelectorAll('dialog').forEach(function (dialogEl) {
+    var pressedOutside = false;
+    dialogEl.addEventListener('pointerdown', function (event) {
+      pressedOutside = outsideBox(dialogEl, event);
+    });
+    dialogEl.addEventListener('click', function (event) {
+      var close = pressedOutside && outsideBox(dialogEl, event) && isModal(dialogEl);
+      pressedOutside = false;
+      if (close) dialogEl.close('cancel');
+    });
+  });
+
   /* --- first-visit language picker ---------------------------------------- */
 
   // The server renders it already open so it works without JavaScript; with
