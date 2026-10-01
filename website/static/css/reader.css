@@ -1099,6 +1099,7 @@ kbd {
   background: #fff;
   border-radius: 8px;
 }
+.sync-qr[hidden] { display: none; }
 .sync-status { margin: 0 0 .8rem; font-size: .86rem; color: var(--ink-soft); }
 .sync-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .sync-actions button { flex: 1; justify-content: center; }

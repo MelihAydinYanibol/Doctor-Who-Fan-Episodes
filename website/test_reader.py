@@ -27,6 +27,7 @@ from content import (
     slugify,
 )
 from markdown_lite import render_document
+from qr import _Matrix, _pick_version, _rs_remainder, qr_matrix, qr_svg
 from sync import SyncStore, clean_progress, merge, normalise_code
 
 
@@ -688,6 +689,70 @@ class SyncTests(unittest.TestCase):
         code = SyncStore(path).create()
         SyncStore(path).push(code, {"progress": {"k": _entry(0.5, 1)}})
         self.assertIn("k", SyncStore(path).get(code)["progress"])
+
+
+class QRTests(unittest.TestCase):
+    def test_reed_solomon_matches_a_known_codeword_block(self):
+        # Version 1-M data for "a" and its error correction, as produced by an
+        # independent encoder (segno).
+        data = [64, 22, 16, 0] + [236, 17] * 6
+        self.assertEqual(_rs_remainder(data, 10), [94, 84, 208, 10, 208, 18, 147, 169, 82, 60])
+
+    def test_version_grows_with_the_link(self):
+        self.assertEqual(_pick_version(14), 1)
+        self.assertEqual(_pick_version(len("https://example.org/sync/12345678")), 3)
+        self.assertEqual(_pick_version(213), 10)
+        with self.assertRaises(ValueError):
+            _pick_version(214)
+
+    def test_finder_patterns_and_size(self):
+        grid = qr_matrix("https://example.org/sync/12345678")
+        self.assertEqual(len(grid), 29)
+        finder = [[max(abs(r - 3), abs(c - 3)) != 2 for c in range(7)] for r in range(7)]
+        n = len(grid)
+        for r0, c0 in ((0, 0), (0, n - 7), (n - 7, 0)):
+            self.assertEqual([row[c0:c0 + 7] for row in grid[r0:r0 + 7]], finder)
+
+    def test_format_information_is_a_valid_codeword_for_level_m(self):
+        for mask in range(8):
+            grid = qr_matrix("hello", mask=mask)
+            bits = [grid[i][8] for i in range(6)] + [grid[7][8], grid[8][8], grid[8][7]]
+            bits += [grid[8][14 - i] for i in range(9, 15)]
+            value = sum(1 << i for i, bit in enumerate(bits) if bit) ^ 0x5412
+            self.assertEqual(value >> 10, mask)  # level M is 00, then the mask
+
+    def test_alignment_patterns_on_the_timing_lines_are_drawn(self):
+        # Version 7 has centres at 6, 22 and 38; (6, 22) sits on the timing
+        # row and must still be a full alignment pattern.
+        grid = qr_matrix("x" * 120)
+        self.assertEqual(len(grid), 45)
+        ring = [grid[6 + dr][22 + dc] for dr in (-1, 0, 1) for dc in (-1, 0, 1) if (dr, dc) != (0, 0)]
+        self.assertTrue(grid[6][22])
+        self.assertFalse(any(ring))
+
+    @unittest.skipUnless(__import__("importlib").util.find_spec("segno"), "segno not installed")
+    def test_function_patterns_match_segno(self):
+        import segno
+
+        for text in ("a", "https://example.org/sync/12345678", "y" * 120, "z" * 200):
+            version = _pick_version(len(text))
+            fixed = _Matrix(version).fixed
+            for mask in range(8):
+                reference = segno.make(
+                    text, error="m", mode="byte", version=version, mask=mask, micro=False, boost_error=False
+                ).matrix
+                mine = qr_matrix(text, mask=mask)
+                for r, row in enumerate(fixed):
+                    for c, is_fixed in enumerate(row):
+                        if is_fixed:
+                            self.assertEqual(bool(reference[r][c]), mine[r][c], (text[:5], mask, r, c))
+
+    def test_svg_is_black_on_white_with_a_quiet_zone(self):
+        svg = qr_svg("https://example.org/sync/12345678")
+        self.assertTrue(svg.startswith("<svg"))
+        self.assertIn('viewBox="0 0 37 37"', svg)  # 29 modules + 2 x 4
+        self.assertIn('fill="#fff"', svg)
+        self.assertIn('fill="#000"', svg)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,2 @@
 Flask>=3.0,<4.0
-segno>=1.5,<2.0      # QR codes for cross-device sync (pure Python)
 # Optional, for production serving:  gunicorn>=21.2

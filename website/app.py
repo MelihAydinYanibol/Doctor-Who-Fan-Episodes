@@ -26,7 +26,6 @@ Configuration (all optional, all via environment variables):
 from __future__ import annotations
 
 import datetime as _dt
-import io
 import os
 import random
 
@@ -51,6 +50,7 @@ from content import (
 )
 from i18n import LANGUAGE_NAMES, language_name, text_direction, translator
 from markdown_lite import render_document
+from qr import qr_svg
 from sync import SyncStore, normalise_code
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -556,14 +556,8 @@ def create_app() -> Flask:
         code = normalise_code(code)
         if code is None or not sync_store.exists(code):
             abort(404)
-        import segno  # only needed here; keeps the reader importable without it
-
-        buffer = io.BytesIO()
         # Black on white whatever the theme: scanners want contrast, not style.
-        segno.make(sync_link(code), error="m").save(
-            buffer, kind="svg", scale=6, border=4, dark="#000", light="#fff", xmldecl=False
-        )
-        response = Response(buffer.getvalue(), mimetype="image/svg+xml")
+        response = Response(qr_svg(sync_link(code)), mimetype="image/svg+xml")
         response.headers["Cache-Control"] = "private, max-age=86400"
         return response
 

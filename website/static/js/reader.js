@@ -627,6 +627,10 @@
       if (name === 'linked' && syncCode) {
         syncDialog.querySelector('[data-sync-code]').textContent = formatCode(syncCode);
         var qr = syncDialog.querySelector('[data-sync-qr]');
+        // If the image cannot load, the typed code still works: hide the
+        // broken-image box rather than leave it in the way.
+        qr.hidden = false;
+        qr.onerror = function () { qr.hidden = true; };
         qr.src = '/api/sync/' + syncCode + '/qr.svg';
         qr.alt = fill(qr.getAttribute('data-alt-template'), { code: formatCode(syncCode) });
         paintSyncStatus();
