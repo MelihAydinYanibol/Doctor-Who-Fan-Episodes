@@ -3,8 +3,11 @@
 Chapters live in this repository as plain-text files, one file per chapter,
 grouped into one folder per language edition, e.g.
 
-    Doctor Who : The Time Parallax/Chapter I - Familiar Face
-    Doctor Who : The Time Parallax Turkish/Bolum I - Tanidik Bir Yuz
+    Doctor Who - The Time Parallax/Chapter I - Familiar Face
+    Doctor Who - The Time Parallax Turkish/Bolum I - Tanidik Bir Yuz
+
+Folder and file names must not contain ":" (Windows cannot check those out);
+a book folder's first " - " is displayed as " : " instead.
 
 Nothing here is hard-coded to those names: folders are discovered at runtime,
 the language is inferred from the folder name suffix, and the chapter number
@@ -170,6 +173,16 @@ def _split_extension(name: str) -> tuple[str, str]:
     return stem, "." + ext.lower()
 
 
+def folder_title(name: str) -> str:
+    """Turn a folder name into a display title.
+
+    Windows cannot store ":" in a file or folder name, so book folders write
+    "Doctor Who - The Time Parallax" for "Doctor Who : The Time Parallax".
+    The first " - " in a folder name is shown as " : ".
+    """
+    return name.strip().replace(" - ", " : ", 1)
+
+
 def detect_language(folder_name: str) -> tuple[str, str]:
     """Return ``(language_code, book_title)`` for a top-level content folder."""
     words = folder_name.split()
@@ -178,8 +191,8 @@ def detect_language(folder_name: str) -> tuple[str, str]:
         raw_candidate = words[-1].lower().strip("()[]-_")
         code = LANGUAGE_SUFFIXES.get(candidate) or LANGUAGE_SUFFIXES.get(raw_candidate)
         if code:
-            return code, " ".join(words[:-1]).strip(" -–—:")
-    return DEFAULT_LANGUAGE, folder_name.strip()
+            return code, folder_title(" ".join(words[:-1]).strip(" -–—:"))
+    return DEFAULT_LANGUAGE, folder_title(folder_name)
 
 
 def parse_chapter_name(file_name: str) -> tuple[int | None, str]:

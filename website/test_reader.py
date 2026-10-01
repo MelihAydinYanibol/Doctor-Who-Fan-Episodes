@@ -70,6 +70,9 @@ class ParsingTests(unittest.TestCase):
     def test_language_detection(self):
         self.assertEqual(detect_language("Doctor Who : The Time Parallax"), ("en", "Doctor Who : The Time Parallax"))
         self.assertEqual(detect_language("Doctor Who : The Time Parallax Turkish"), ("tr", "Doctor Who : The Time Parallax"))
+        # Windows-safe folder names write " - " where the title has " : ".
+        self.assertEqual(detect_language("Doctor Who - The Time Parallax"), ("en", "Doctor Who : The Time Parallax"))
+        self.assertEqual(detect_language("Doctor Who - The Time Parallax Turkish"), ("tr", "Doctor Who : The Time Parallax"))
         self.assertEqual(detect_language("A Book German"), ("de", "A Book"))
 
     def test_slugify_handles_turkish(self):
