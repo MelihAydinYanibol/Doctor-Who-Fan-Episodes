@@ -594,8 +594,13 @@ main:focus { outline: none; }
   box-shadow: var(--shadow);
 }
 .settings-dialog::backdrop { background: rgba(8, 10, 16, .55); backdrop-filter: blur(2px); }
+/* Only the form scrolls. Sizing it to the dialog's max-height ignored the
+   dialog's border, so the dialog overflowed by 2px and grew a second
+   scrollbar beside the form's. Flex lets the form take exactly the room
+   inside the border. */
+.settings-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
 
-.settings-form { padding: 1.3rem 1.4rem 1.5rem; overflow-y: auto; max-height: inherit; }
+.settings-form { padding: 1.3rem 1.4rem 1.5rem; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .settings-head h2 { margin: 0; font-size: 1.15rem; }
 .settings-hint { color: var(--ink-faint); font-size: .82rem; margin: .2rem 0 1.3rem; }
