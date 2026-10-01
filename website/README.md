@@ -204,6 +204,8 @@ preferences.
   percentage badge on chapters already started. Progress is tracked per
   language, so a Turkish page never offers to resume an English chapter.
 * A print stylesheet renders the chapter as clean prose without the chrome.
+* **Pop-up boxes** (settings, sync, language, notifications, "start from the
+  beginning?") close with ×, Esc, or a tap or click outside the box.
 * **Phones** — the header shrinks to one row (site name, a compact language
   menu, Sync, Settings) and slides out of the way while you read, coming back
   on the first scroll up. Every control is at least 44px tall, form controls
