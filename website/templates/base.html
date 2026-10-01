@@ -39,12 +39,13 @@
 <body>
 <a class="skip-link" href="#main">{{ t('skip_to_content') }}</a>
 
-<header class="site-header">
-  <div class="progress-wrap" hidden>
-    <div id="reading-progress" class="progress-bar" role="progressbar"
-         aria-label="{{ t('reading_progress') }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
-  </div>
+{# Outside the header so it stays put when the header tucks away on phones. #}
+<div class="progress-wrap" hidden>
+  <div id="reading-progress" class="progress-bar" role="progressbar"
+       aria-label="{{ t('reading_progress') }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+</div>
 
+<header class="site-header">
   <div class="shell header-inner">
     <a class="brand" href="{{ url_for('index', lang=lang) }}">
       <span class="brand-mark" aria-hidden="true">
@@ -66,6 +67,8 @@
         <span class="lang-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="17" height="17" focusable="false"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 6h-2.9a15.7 15.7 0 0 0-1.4-3.7A8 8 0 0 1 18.9 8ZM12 4.1c.7 1 1.3 2.4 1.7 3.9h-3.4C10.7 6.5 11.3 5.1 12 4.1ZM4.3 14a8 8 0 0 1 0-4h3.3a17.9 17.9 0 0 0 0 4Zm.8 2h2.9c.3 1.3.8 2.6 1.4 3.7A8 8 0 0 1 5.1 16Zm2.9-8H5.1a8 8 0 0 1 4.3-3.7A15.7 15.7 0 0 0 8 8Zm4 11.9c-.7-1-1.3-2.4-1.7-3.9h3.4c-.4 1.5-1 2.9-1.7 3.9ZM14.1 14H9.9a15.9 15.9 0 0 1 0-4h4.2a15.9 15.9 0 0 1 0 4Zm.5 5.7c.6-1.1 1.1-2.4 1.4-3.7h2.9a8 8 0 0 1-4.3 3.7ZM16.4 14a17.9 17.9 0 0 0 0-4h3.3a8 8 0 0 1 0 4Z"/></svg>
         </span>
+        {# Phones show just the code; the native picker still lists full names. #}
+        <span class="lang-code" aria-hidden="true">{{ lang|upper }}</span>
         <select id="language-select" data-language-select>
           {% for variant in language_variants %}
             <option value="{{ variant.url }}" {% if variant.code == lang %}selected{% endif %}>{{ variant.name }}{% if not variant.exact and variant.code != lang %} ↗{% endif %}</option>

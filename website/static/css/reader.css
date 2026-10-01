@@ -146,6 +146,14 @@ body {
   width: min(100% - 2.5rem, 68rem);
   margin-inline: auto;
 }
+/* The page asks for viewport-fit=cover, so keep content clear of notches and
+   rounded corners in landscape and of the home indicator at the bottom. */
+@supports (padding: max(0px)) {
+  .shell {
+    width: min(100% - 2.5rem - env(safe-area-inset-left) - env(safe-area-inset-right), 68rem);
+  }
+  .site-footer { padding-bottom: max(2.5rem, calc(1.5rem + env(safe-area-inset-bottom))); }
+}
 
 a { color: var(--accent); text-underline-offset: .18em; }
 a:hover { text-decoration-thickness: 2px; }
@@ -200,6 +208,7 @@ a:hover { text-decoration-thickness: 2px; }
   position: sticky;
   top: 0;
   z-index: 30;
+  transition: transform 200ms ease;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--rule);
@@ -255,6 +264,7 @@ a:hover { text-decoration-thickness: 2px; }
   background: var(--bg-elevated);
 }
 .lang-icon { color: var(--ink-faint); display: grid; place-items: center; }
+.lang-code { display: none; }
 .lang-switch select {
   border: 0;
   background: transparent;
@@ -580,6 +590,7 @@ main:focus { outline: none; }
   padding: 0;
   width: min(100% - 2rem, 34rem);
   max-height: min(88vh, 46rem);
+  max-height: min(88dvh, 46rem);
   box-shadow: var(--shadow);
 }
 .settings-dialog::backdrop { background: rgba(8, 10, 16, .55); backdrop-filter: blur(2px); }
@@ -659,14 +670,65 @@ kbd {
 /* --- responsive ----------------------------------------------------------- */
 
 @media (max-width: 640px) {
-  .header-inner { padding: .6rem 0; }
+  /* One compact row: brand on the left, three 44px controls on the right.
+     Library is the brand link and Legal lives in the footer, so the two text
+     links give their room back to the page. */
+  .header-inner { padding: .4rem 0; flex-wrap: nowrap; gap: .6rem; }
+  .brand { flex: 1; gap: .5rem; min-height: 44px; }
+  .brand-text strong { font-size: .92rem; line-height: 1.2; }
   .brand-text small { display: none; }
+  .site-nav { flex: none; flex-wrap: nowrap; gap: .4rem; }
+  .site-nav > a { display: none; }
   .settings-button span { display: none; }
-  .settings-button { padding: .5rem; }
+  .settings-button { padding: 0; min-width: 44px; min-height: 44px; justify-content: center; }
+
+  /* "EN ▾" in a 44px box; the real select sits invisibly on top, so taps,
+     keyboard and screen readers all reach the native picker. */
+  .lang-switch { position: relative; min-width: 44px; min-height: 44px; padding: 0 .6rem; justify-content: center; }
+  .lang-switch .lang-icon { display: none; }
+  .lang-code { display: inline; font-size: .82rem; font-weight: 700; letter-spacing: .04em; }
+  .lang-code::after { content: " \25BE"; font-weight: 400; color: var(--ink-faint); }
+  .lang-switch select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    opacity: 0;
+    font-size: 16px; /* below 16px iOS zooms the page on focus */
+  }
+  .lang-switch:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  /* Slides away while reading down, back on the first scroll up. */
+  .site-header.is-tucked { transform: translateY(-100%); }
+  .site-header.is-tucked:focus-within { transform: none; }
+
+  /* Comfortable tap targets for the small controls. */
+  .ghost-button.small { min-height: 44px; padding-inline: .8rem; }
+  .crumbs { margin-bottom: 1rem; }
+  .crumbs a { display: inline-flex; align-items: center; min-height: 44px; }
+  .book-hero .crumbs { margin-bottom: .4rem; }
+
+  /* Footer: one item per line instead of dots stranded at line ends. */
+  .site-footer .meta { flex-direction: column; align-items: flex-start; gap: 0; }
+  .site-footer .meta > [aria-hidden="true"] { display: none; }
+  .site-footer .meta > a { display: inline-flex; align-items: center; min-height: 40px; }
+  .site-footer .meta > span, .site-footer .meta > time { padding: .3rem 0; }
+
   .chapter-card { grid-template-columns: auto 1fr; gap: .9rem; padding: .9rem 1rem; }
   .chapter-arrow { display: none; }
   .chapter-nav { grid-template-columns: 1fr; }
   .nav-card.next { text-align: start; }
+}
+
+@media (max-width: 400px) {
+  /* Keep a long site name (the Turkish one) to two lines beside the controls. */
+  .brand-mark svg { width: 22px; height: 22px; }
+  .brand { gap: .4rem; }
+  .brand-text strong { font-size: .84rem; letter-spacing: 0; }
+  .site-nav { gap: .3rem; }
+  .lang-switch { padding: 0 .45rem; }
+}
+@media (max-width: 340px) {
+  .brand-text strong { font-size: .76rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1048,7 +1110,7 @@ kbd {
 }
 .sync-button .sync-dot[hidden] { display: none; }
 
-.sync-dialog { width: min(100% - 2rem, 28rem); max-height: 92vh; overflow-y: auto; }
+.sync-dialog { width: min(100% - 2rem, 28rem); max-height: 92vh; max-height: 92dvh; overflow-y: auto; }
 .sync-step[hidden] { display: none; }
 
 .sync-choices { display: grid; gap: .35rem; }
@@ -1057,6 +1119,11 @@ kbd {
 
 .sync-enter-form label { display: block; font-size: .84rem; font-weight: 600; margin-bottom: .45rem; }
 .sync-enter-row { display: flex; gap: .5rem; }
+@media (max-width: 480px) {
+  .sync-enter-row { flex-direction: column; }
+  .sync-enter-row button { justify-content: center; }
+  .sync-code-input { letter-spacing: .08em; }
+}
 .sync-code-input {
   flex: 1;
   min-width: 0;
