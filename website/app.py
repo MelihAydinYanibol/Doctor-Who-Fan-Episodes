@@ -289,7 +289,7 @@ def create_app() -> Flask:
         return {
             "book": book,
             "edition": edition,
-            "chapters": len(edition.chapters),
+            "chapters": len(edition.story_chapters),
             "first": edition.chapters[0] if edition.chapters else None,
             "cover_url": cover_url(book, language),
             "translated": edition.language == language,

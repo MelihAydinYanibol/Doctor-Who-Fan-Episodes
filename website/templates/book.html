@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ book.title }} · {{ t('site_name') }}{% endblock %}
-{% block description %}{{ book.title }} — {{ t('chapter_count', count=edition.chapters|length) }}. {{ t('disclaimer_short') }}{% endblock %}
+{% block description %}{{ book.title }} — {{ t('chapter_count', count=edition.story_chapters|length) }}. {{ t('disclaimer_short') }}{% endblock %}
 
 {% block content %}
 <section class="book-hero{% if cover_url %} has-cover{% endif %}" style="--cover-hue: {{ book.hue }};">
@@ -13,7 +13,7 @@
     <p class="eyebrow">{{ t('site_tagline') }}</p>
     <h1 lang="{{ edition.language }}">{{ book.title }}</h1>
     <p class="hero-meta">
-      {{ t('chapter_count', count=edition.chapters|length) }}
+      {{ t('chapter_count', count=edition.story_chapters|length) }}
       <span aria-hidden="true">·</span>
       {% for code in book.languages %}<span class="lang-chip{% if code == lang %} is-current{% endif %}">{{ language_name(code) }}</span>{% endfor %}
     </p>
