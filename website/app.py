@@ -15,6 +15,7 @@ Configuration (all optional, all via environment variables):
     DWFE_CACHE_TTL       seconds between automatic re-reads (default: 300)
     DWFE_LOCAL_CACHE_TTL same, for a local checkout, where re-reading is cheap
                          (default: 0 — edits appear as soon as they are saved)
+    DWFE_DEV_BRANCH      branch the /dev preview follows (default: dev; "" turns it off)
     DWFE_REFRESH_TOKEN   shared secret for POST /api/refresh
     DWFE_WEBHOOK_SECRET  secret for the GitHub push webhook at /webhook/github
     DWFE_SYNC_DB         SQLite file for cross-device sync codes
@@ -28,6 +29,8 @@ from __future__ import annotations
 import datetime as _dt
 import os
 import random
+
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
 
 from flask import (
     Flask,
@@ -68,13 +71,22 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def create_app() -> Flask:
+def create_app(channel: str = "live", branch: str | None = None) -> Flask:
+    """Build the site.
+
+    ``channel`` "dev" builds the preview that follows the dev branch: same
+    site, different content, plus a notice saying so. It is mounted under
+    /dev by create_site() rather than served on its own.
+    """
     app = Flask(__name__)
     app.config.update(
+        CHANNEL=channel,
         CONTENT_ROOT=os.environ.get("DWFE_CONTENT_ROOT", DEFAULT_CONTENT_ROOT),
-        SOURCE=os.environ.get("DWFE_SOURCE", "auto").strip().lower(),
+        # The preview reads a branch, and a checkout only ever has one branch
+        # at a time, so it always goes to GitHub for its content.
+        SOURCE="github" if channel == "dev" else os.environ.get("DWFE_SOURCE", "auto").strip().lower(),
         GITHUB_REPO=os.environ.get("DWFE_GITHUB_REPO", "MelihAydinYanibol/Doctor-Who-Fan-Episodes"),
-        GITHUB_BRANCH=os.environ.get("DWFE_GITHUB_BRANCH", "main"),
+        GITHUB_BRANCH=branch or os.environ.get("DWFE_GITHUB_BRANCH", "main"),
         GITHUB_TOKEN=os.environ.get("DWFE_GITHUB_TOKEN") or None,
         CACHE_TTL=float(os.environ.get("DWFE_CACHE_TTL", "300")),
         LOCAL_CACHE_TTL=float(os.environ.get("DWFE_LOCAL_CACHE_TTL", "0")),
@@ -148,6 +160,13 @@ def create_app() -> Flask:
             "dir": text_direction(language),
             "updated_iso": updated.isoformat(timespec="seconds") if updated else "",
             "updated_human": updated.strftime("%d %b %Y, %H:%M UTC") if updated else "",
+            "channel": app.config["CHANNEL"],
+            "is_dev": app.config["CHANNEL"] == "dev",
+            "dev_branch": app.config["GITHUB_BRANCH"],
+            # Where the page is mounted ("" live, "/dev" preview). The script
+            # needs it to call the right API, and to keep each channel's saved
+            # reading position and subscriptions apart.
+            "base_path": request.script_root,
             "current_endpoint": request.endpoint,
             "view_args": dict(request.view_args or {}),
             # Nobody has told us which language they want yet: no saved choice
@@ -620,6 +639,9 @@ def create_app() -> Flask:
     def add_headers(response: Response) -> Response:
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        if app.config["CHANNEL"] == "dev":
+            # Drafts are not for search engines.
+            response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
         if request.path.startswith("/static/"):
             response.headers.setdefault("Cache-Control", "public, max-age=3600")
         return response
@@ -627,7 +649,25 @@ def create_app() -> Flask:
     return app
 
 
-app = create_app()
+def create_site() -> Flask:
+    """The published site, with the draft preview mounted under /dev.
+
+    Mounting rather than routing keeps every existing URL untouched: the
+    preview is a second copy of the same app, and because WSGI tells it where
+    it lives, every link it writes already starts with /dev.
+    """
+    site = create_app()
+    dev_branch = os.environ.get("DWFE_DEV_BRANCH", "dev").strip()
+    if not dev_branch:
+        return site
+
+    preview = create_app(channel="dev", branch=dev_branch)
+    site.extensions["dev"] = preview
+    site.wsgi_app = DispatcherMiddleware(site.wsgi_app, {"/dev": preview})
+    return site
+
+
+app = create_site()
 
 
 if __name__ == "__main__":
