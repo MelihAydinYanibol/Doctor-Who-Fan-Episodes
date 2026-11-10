@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="{{ lang }}" dir="{{ dir }}" data-theme="system">
+<html lang="{{ lang }}" dir="{{ dir }}" data-theme="system" data-channel="{{ channel }}" data-base="{{ base_path }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{% block title %}{{ t('site_name') }}{% endblock %}</title>
 <meta name="description" content="{% block description %}{{ t('site_tagline') }} — {{ t('disclaimer_short') }}{% endblock %}">
 <meta name="color-scheme" content="light dark">
+{% if is_dev %}<meta name="robots" content="noindex, nofollow">{% endif %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/reader.css') }}">
 <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
 {% block head %}{% endblock %}
@@ -38,6 +39,16 @@
 </head>
 <body>
 <a class="skip-link" href="#main">{{ t('skip_to_content') }}</a>
+
+{% if is_dev %}
+<aside class="dev-banner" aria-label="{{ t('dev_notice_title') }}">
+  <div class="shell dev-banner-inner">
+    <span class="dev-badge">{{ t('dev_notice_title') }}</span>
+    <p>{{ t('dev_notice_body', branch=dev_branch) }}</p>
+    <a class="dev-banner-link" href="/">{{ t('dev_notice_link') }} →</a>
+  </div>
+</aside>
+{% endif %}
 
 {# Outside the header so it stays put when the header tucks away on phones. #}
 <div class="progress-wrap" hidden>
@@ -78,12 +89,16 @@
       {% endif %}
 
       {# Sync needs the script, so the button only appears where it runs. #}
+      {# Sync codes are shared across channels, so a draft position could be
+         carried to the published site. The preview is for reading, not syncing. #}
+      {% if not is_dev %}
       <button type="button" class="settings-button sync-button" data-open-sync aria-haspopup="dialog"
               aria-label="{{ t('sync_title') }}" hidden>
         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 4a8 8 0 0 0-7.4 5H2l3.5 4L9 9H6.8A6 6 0 0 1 18 10h2a8 8 0 0 0-8-6Zm6.5 7L15 15h2.2A6 6 0 0 1 6 14H4a8 8 0 0 0 15.4 1H22l-3.5-4Z"/></svg>
         <span>{{ t('sync_button') }}</span>
         <span class="sync-dot" data-sync-dot hidden aria-hidden="true"></span>
       </button>
+      {% endif %}
 
       {# The label is hidden on narrow screens, so name the button explicitly. #}
       <button type="button" class="settings-button" data-open-settings aria-haspopup="dialog"

@@ -9,8 +9,20 @@
 
   var SETTINGS_KEY = 'dwfe:settings';
   var SETTINGS_AT_KEY = 'dwfe:settings-at';
-  var PROGRESS_KEY = 'dwfe:progress';
+  var PROGRESS_KEY;
   var root = document.documentElement;
+
+  // The draft preview at /dev is the same site reading another branch. Its
+  // API calls have to go to its own mount, and the places it remembers where
+  // you got to must not bleed into the published site: the chapters differ,
+  // so a position saved there can point at something that does not exist here.
+  var BASE = root.getAttribute('data-base') || '';
+  var CHANNEL = root.getAttribute('data-channel') || 'live';
+  var NS = CHANNEL === 'live' ? 'dwfe:' : 'dwfe:' + CHANNEL + ':';
+  function api(path) { return BASE + path; }
+
+  PROGRESS_KEY = NS + 'progress';
+
   var live = document.getElementById('live-region');
 
   var DEFAULTS = {
@@ -223,7 +235,7 @@
     button.addEventListener('click', function () {
       var label = button.textContent;
       button.disabled = true;
-      fetch('/api/refresh', { method: 'POST' })
+      fetch(api('/api/refresh'), { method: 'POST' })
         .then(function (response) { return response.json(); })
         .then(function () { window.location.reload(); })
         .catch(function () {
@@ -458,7 +470,7 @@
   // merge of every device on the code: newest wins per chapter, and the most
   // recently changed settings win as a whole.
   var SYNC_COOKIE = 'dwfe_sync';
-  var SYNC_AT_KEY = 'dwfe:sync-at';
+  var SYNC_AT_KEY = NS + 'sync-at';
   var SYNC_FIRST_WAIT_MS = 2500;   // how long the page waits before showing progress anyway
   var SYNC_MIN_GAP_MS = 20000;     // pull at most this often on focus
 
@@ -542,7 +554,7 @@
     lastPullAt = Date.now();
     if (!force && body === lastPushed) return Promise.resolve(true);
     var code = syncCode;
-    return fetch('/api/sync/' + code, {
+    return fetch(api('/api/sync/' + code), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: body,
@@ -578,7 +590,7 @@
     var body = syncPayload();
     if (body === lastPushed) return;
     try {
-      navigator.sendBeacon('/api/sync/' + syncCode, new Blob([body], { type: 'text/plain;charset=UTF-8' }));
+      navigator.sendBeacon(api('/api/sync/' + syncCode), new Blob([body], { type: 'text/plain;charset=UTF-8' }));
     } catch (err) { /* best effort */ }
   });
 
@@ -660,7 +672,7 @@
         // broken-image box rather than leave it in the way.
         qr.hidden = false;
         qr.onerror = function () { qr.hidden = true; };
-        qr.src = '/api/sync/' + syncCode + '/qr.svg';
+        qr.src = api('/api/sync/' + syncCode + '/qr.svg');
         qr.alt = fill(qr.getAttribute('data-alt-template'), { code: formatCode(syncCode) });
         paintSyncStatus();
       }
@@ -694,7 +706,7 @@
       var code = normaliseCode(raw);
       if (!code) { showError(phrases.syncInvalid); return; }
       showError('');
-      fetch('/api/sync/' + code, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+      fetch(api('/api/sync/' + code), { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
         .then(function (response) {
           if (response.status === 404) { showError(phrases.syncUnknown); return; }
           if (!response.ok) { showError(phrases.syncFailed); return; }
@@ -716,7 +728,7 @@
     syncDialog.querySelector('[data-sync-create]').addEventListener('click', function () {
       var button = this;
       button.disabled = true;
-      fetch('/api/sync', { method: 'POST', headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+      fetch(api('/api/sync'), { method: 'POST', headers: { Accept: 'application/json' }, credentials: 'same-origin' })
         .then(function (response) {
           if (!response.ok) throw new Error('create failed');
           return response.json();
@@ -949,7 +961,7 @@
   // is that notifications can only be raised while the site is open — the page
   // says so before asking for permission, and new chapters are marked here on
   // the next visit regardless.
-  var SUBS_KEY = 'dwfe:subscriptions';
+  var SUBS_KEY = NS + 'subscriptions';
   var POLL_MS = 5 * 60 * 1000;
 
   var subscriptions = readStore(SUBS_KEY, {});
@@ -1089,7 +1101,7 @@
     var slugs = Object.keys(subscriptions);
     if (!slugs.length || !window.fetch) return;
 
-    fetch('/api/library', { headers: { Accept: 'application/json' } })
+    fetch(api('/api/library'), { headers: { Accept: 'application/json' } })
       .then(function (response) { return response.json(); })
       .then(function (payload) {
         var changed = false;

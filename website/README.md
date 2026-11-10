@@ -73,6 +73,32 @@ library came from — so a GitHub-backed deployment picks up new artwork the sam
 way it picks up new chapters — and carry an ETag so browsers re-download them
 only when the file actually changes.
 
+## The draft preview at /dev
+
+`/dev` is the same site reading the `dev` branch, so you can see work in
+progress laid out as readers will see it. Every page there carries a yellow
+strip saying what it is, with a link back to the published site, and is marked
+`noindex` so drafts stay out of search results.
+
+It is mounted rather than routed, which means every URL on the published site
+is untouched and every link inside the preview already starts with `/dev`:
+`/dev/en/book/<book>`, `/dev/en/read/<book>/<chapter>`, and so on.
+
+A few things to know:
+
+* **It always reads GitHub.** A checkout only has one branch at a time, so the
+  preview asks GitHub for the branch rather than looking at the files on disk —
+  even when the published site is set to `local`. With no network it shows its
+  banner and an empty library rather than failing.
+* **Reading positions and subscriptions are kept apart.** A chapter you read in
+  the preview may not exist on the published site, so each channel saves under
+  its own key (`dwfe:dev:progress`). Your reading settings — theme, text size —
+  stay shared, since those are about you, not about the text.
+* **Sync is offered on the published site only.** Sync codes are shared between
+  channels, so pairing from the preview could carry a draft position across.
+* `DWFE_DEV_BRANCH` picks the branch (default `dev`); set it to an empty string
+  to turn the preview off entirely.
+
 ## How chapters are found
 
 Nothing is hard-coded. At startup (and on every refresh) the reader scans the
@@ -145,6 +171,7 @@ All optional, all environment variables:
 | `DWFE_CONTENT_ROOT` | the repository root | where to read chapters from on disk |
 | `DWFE_GITHUB_REPO` | `MelihAydinYanibol/Doctor-Who-Fan-Episodes` | `owner/name` |
 | `DWFE_GITHUB_BRANCH` | `main` | branch to read |
+| `DWFE_DEV_BRANCH` | `dev` | branch the /dev preview follows; empty turns it off |
 | `DWFE_GITHUB_TOKEN` | — | optional; raises the API rate limit from 60/h to 5000/h |
 | `DWFE_CACHE_TTL` | `300` | seconds before the chapter index is re-read from GitHub |
 | `DWFE_LOCAL_CACHE_TTL` | `0` | the same, for a checkout on disk — zero means edits appear at once |

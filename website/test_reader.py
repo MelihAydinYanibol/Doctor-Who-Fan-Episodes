@@ -15,7 +15,7 @@ import shutil
 import tempfile
 import unittest
 
-from app import create_app
+from app import create_app, create_site
 from content import (
     ContentService,
     find_cover,
@@ -315,6 +315,102 @@ class GitHubSourceTests(unittest.TestCase):
 
         self.assertFalse(any("website" in url for url in seen), "the website folder must not be crawled")
         self.assertTrue(any(url.startswith("https://raw.githubusercontent.com/Owner/Repo/main/") for url in seen))
+
+
+class DevPreviewTests(unittest.TestCase):
+    """The /dev preview: the same site, reading another branch."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        build_fixture(self.root)        # what "main" holds
+        os.environ.update(DWFE_SOURCE="local", DWFE_CONTENT_ROOT=self.root, DWFE_CACHE_TTL="0")
+
+        # ...and a draft branch that has one chapter more.
+        self.branch_seen = []
+        listings = {
+            "": [{"name": "My Book", "path": "My Book", "type": "dir"}],
+            "My Book": [
+                {"name": "Chapter I - Alpha", "path": "My Book/Chapter I - Alpha",
+                 "type": "file", "sha": "d1", "size": 9},
+                {"name": "Chapter II - Beta", "path": "My Book/Chapter II - Beta",
+                 "type": "file", "sha": "d2", "size": 9},
+                {"name": "Chapter III - Unreleased", "path": "My Book/Chapter III - Unreleased",
+                 "type": "file", "sha": "d3", "size": 9},
+            ],
+        }
+        outer = self
+
+        def fake_request(self, url, accept):
+            outer.branch_seen.append(url)
+            if "raw.githubusercontent.com" in url:
+                return "Chapter III - Unreleased\n\nStill being written.\n".encode("utf-8")
+            return json.dumps(listings["My Book" if "My%20Book" in url else ""]).encode("utf-8")
+
+        self.original_request = GitHubSource._request
+        GitHubSource._request = fake_request
+        self.client = create_site().test_client()
+
+    def tearDown(self):
+        GitHubSource._request = self.original_request
+        shutil.rmtree(self.root, ignore_errors=True)
+        for key in ("DWFE_SOURCE", "DWFE_CONTENT_ROOT", "DWFE_CACHE_TTL"):
+            os.environ.pop(key, None)
+
+    def test_the_preview_shows_the_draft_branch(self):
+        body = self.client.get("/dev/en/book/my-book").get_data(as_text=True)
+        self.assertIn("Unreleased", body)
+        self.assertTrue(
+            self.branch_seen and all("ref=dev" in url for url in self.branch_seen),
+            f"the preview must ask GitHub for the dev branch, got {self.branch_seen[:2]}",
+        )
+
+    def test_the_published_site_does_not_show_drafts(self):
+        body = self.client.get("/en/book/my-book").get_data(as_text=True)
+        self.assertNotIn("Unreleased", body)
+
+    def test_the_preview_says_what_it_is(self):
+        body = self.client.get("/dev/en/").get_data(as_text=True)
+        self.assertIn("Draft preview", body)
+        self.assertIn("dev branch", body)
+        self.assertIn('href="/"', body)          # a way back to the published site
+
+    def test_drafts_are_kept_out_of_search_results(self):
+        response = self.client.get("/dev/en/")
+        self.assertIn("noindex", response.get_data(as_text=True))
+        self.assertIn("noindex", response.headers.get("X-Robots-Tag", ""))
+        live = self.client.get("/en/")
+        self.assertNotIn("noindex", live.get_data(as_text=True))
+        self.assertNotIn("X-Robots-Tag", live.headers)
+
+    def test_links_inside_the_preview_stay_in_the_preview(self):
+        body = self.client.get("/dev/en/").get_data(as_text=True)
+        self.assertIn('href="/dev/en/book/my-book"', body)
+        self.assertNotIn('href="/en/book/my-book"', body)
+        chapter = self.client.get("/dev/en/book/my-book").get_data(as_text=True)
+        self.assertIn("/dev/en/read/my-book/", chapter)
+
+    def test_the_two_channels_keep_their_reading_positions_apart(self):
+        # A chapter read in the preview may not exist on the published site, so
+        # the script is told which namespace to save under.
+        dev = self.client.get("/dev/en/").get_data(as_text=True)
+        live = self.client.get("/en/").get_data(as_text=True)
+        self.assertIn('data-channel="dev"', dev)
+        self.assertIn('data-base="/dev"', dev)
+        self.assertIn('data-channel="live"', live)
+        self.assertIn('data-base=""', live)
+
+    def test_sync_is_offered_only_on_the_published_site(self):
+        self.assertIn("data-open-sync", self.client.get("/en/").get_data(as_text=True))
+        self.assertNotIn("data-open-sync", self.client.get("/dev/en/").get_data(as_text=True))
+
+    def test_the_preview_can_be_turned_off(self):
+        os.environ["DWFE_DEV_BRANCH"] = ""
+        try:
+            client = create_site().test_client()
+            self.assertEqual(client.get("/dev/en/").status_code, 404)
+            self.assertEqual(client.get("/en/").status_code, 200)
+        finally:
+            os.environ.pop("DWFE_DEV_BRANCH", None)
 
 
 class RouteTests(unittest.TestCase):
